@@ -1,0 +1,13 @@
+node_modules
+dist
+.DS_Store
+*.log
+.env
+.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Agent operating docs — local only. This repo is public; these carry internal
+# context (schema shapes, private monorepo references, internal paths).
+AGENTS.md
+CLAUDE.md
+MEMORY.md

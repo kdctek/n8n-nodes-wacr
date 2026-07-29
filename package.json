@@ -1,0 +1,65 @@
+{
+  "name": "n8n-nodes-wacr",
+  "version": "0.1.0",
+  "description": "n8n community node for WA.cr — send WhatsApp and email messages, manage contacts, templates, broadcasts, media and internal conversation notes.",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "wacr",
+    "wa.cr",
+    "whatsapp",
+    "whatsapp-business",
+    "messaging",
+    "crm"
+  ],
+  "license": "MIT",
+  "homepage": "https://wa.cr",
+  "author": {
+    "name": "KDC",
+    "email": "ping@wa.cr"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kdctek/n8n-nodes-wacr.git"
+  },
+  "engines": {
+    "node": ">=20.15"
+  },
+  "main": "index.js",
+  "scripts": {
+    "build": "npx rimraf dist && tsc && gulp build:icons",
+    "dev": "tsc --watch",
+    "format": "prettier nodes credentials --write",
+    "lint": "eslint nodes credentials package.json",
+    "lintfix": "eslint nodes credentials package.json --fix",
+    "test": "npm run build && node --test 'test/*.test.js'",
+    "prepublishOnly": "npm run build && eslint -c .eslintrc.prepublish.js nodes credentials package.json"
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/WacrApi.credentials.js",
+      "dist/credentials/WacrOAuth2Api.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/Wacr/Wacr.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@typescript-eslint/parser": "^8.32.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-n8n-nodes-base": "^1.16.3",
+    "gulp": "^5.0.0",
+    "n8n-workflow": "*",
+    "prettier": "^3.5.3",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.2"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}
