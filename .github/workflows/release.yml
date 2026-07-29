@@ -1,0 +1,59 @@
+name: Release
+
+# n8n requires that ALL community nodes submitted for verification are published
+# by a GitHub action and carry a provenance statement (rule in force since
+# 2026-05-01). Publishing from a local machine disqualifies the package, so
+# `npm publish` must never be run by hand — tag a release and let this run.
+#
+# Setup, once: create a granular-access npm token scoped to this package under
+# the kdctek account and store it as the NPM_TOKEN repository secret.
+#
+# Release: bump the version in package.json, roll CHANGELOG.md, then
+#   git tag v0.1.0 && git push origin v0.1.0
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # required for provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      # Tag and manifest must agree, or npm publishes a version nobody tagged.
+      # Skipped on workflow_dispatch, where there is no tag to compare against.
+      - name: Check tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p 'require("./package.json").version')"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::tag v$TAG does not match package.json version $PKG"
+            exit 1
+          fi
+
+      # The AGENTS.md verify gate, in full. `prepublishOnly` reruns the build and
+      # the strict lint at publish time; running them here fails the release
+      # before anything reaches the registry.
+      - run: npm run lint
+      - run: npx eslint -c .eslintrc.prepublish.js nodes credentials package.json
+      - run: npx tsc --noEmit
+      - run: npm test
+
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
