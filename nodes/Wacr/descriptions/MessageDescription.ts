@@ -116,7 +116,9 @@ export const messageFields: INodeProperties[] = [
 		type: 'options',
 		typeOptions: {
 			loadOptionsMethod: 'getTemplateLanguages',
-			loadOptionsDependsOn: ['templateName'],
+			// `.value` matters: templateName is a resourceLocator, and depending on
+			// the bare name never fires when the picked value changes.
+			loadOptionsDependsOn: ['templateName.value'],
 		},
 		required: true,
 		default: 'en',
@@ -154,7 +156,7 @@ export const messageFields: INodeProperties[] = [
 		noDataExpression: true,
 		default: { mappingMode: 'defineBelow', value: null },
 		typeOptions: {
-			loadOptionsDependsOn: ['templateName', 'languageCode'],
+			loadOptionsDependsOn: ['templateName.value', 'languageCode'],
 			resourceMapper: {
 				resourceMapperMethod: 'getTemplateVariables',
 				mode: 'add',
