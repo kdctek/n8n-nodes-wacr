@@ -54,6 +54,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The node now states plainly that **a successful send is not a delivered message**: everything
+  except Template needs an open 24-hour service window and fails *silently* outside it (WA.cr
+  accepts, so n8n reports success), and an accepted Marketing template can still be dropped by
+  Meta's per-user limits.
+
 - **Language Code is now a dropdown** loaded from the chosen template's own translations.
   A template name exists once per language and the placeholders can differ between them, so
   typing a code that did not exist failed only at send time.

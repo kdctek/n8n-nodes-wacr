@@ -69,7 +69,7 @@ export const messageFields: INodeProperties[] = [
 			{
 				name: 'Text',
 				value: 'text',
-				description: 'Plain text — only deliverable inside an open 24-hour service window',
+				description: 'Plain text. Needs an open 24-hour service window.',
 			},
 			{
 				name: 'Template',
@@ -79,16 +79,34 @@ export const messageFields: INodeProperties[] = [
 			{
 				name: 'Interactive',
 				value: 'interactive',
-				description: 'Buttons, lists, call-to-action links, Flows, location, address or products',
+				description:
+					'Buttons, lists, links, Flows, location, address or products. Needs an open 24-hour service window.',
 			},
 			{
 				name: 'Raw Message Object',
 				value: 'raw',
-				description: 'A full Cloud API message object, for types this node does not model',
+				description:
+					'A full Cloud API message object, for types this node does not model. Needs an open 24-hour service window unless it is a template.',
 			},
 		],
 		default: 'text',
 		displayOptions: showFor({ channel: ['whatsapp'] }),
+	},
+	{
+		displayName:
+			'Everything except <b>Template</b> only reaches the contact inside an open <b>24-hour service window</b> — that is, within 24 hours of their last inbound message. <b>If the window has closed this node still reports success</b>: WA.cr accepts the message and the failure appears later in WA.cr, not here. Send a Template to open a new conversation.',
+		name: 'windowNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: showFor({ channel: ['whatsapp'], messageType: ['text', 'interactive', 'raw'] }),
+	},
+	{
+		displayName:
+			'A successful send means WA.cr <b>accepted</b> the message, not that it was delivered. <b>Marketing</b> templates especially can be dropped by Meta\u2019s per-user marketing limits and quality rules. Confirm delivery in WA.cr rather than assuming it from this node.',
+		name: 'templateNotice',
+		type: 'notice',
+		default: '',
+		displayOptions: showFor({ channel: ['whatsapp'], messageType: ['template'] }),
 	},
 	{
 		displayName: 'Text',

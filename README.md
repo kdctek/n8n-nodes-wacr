@@ -99,6 +99,21 @@ catalogue or a published Flow configured on your WABA.
 
 Email takes an address or a contact UUID, a subject, and an HTML body.
 
+#### A successful send is not a delivered message
+
+Two things catch people out, so the node says both in the UI as well:
+
+- **Everything except Template needs an open 24-hour service window** — within 24 hours of the
+  contact's last inbound message. Outside it, WA.cr still *accepts* the message, so **this node
+  reports success and the failure only shows up later in WA.cr**. There is no error in n8n to
+  branch on. A Template is the only way to open a new conversation.
+- **An accepted template is not a guaranteed delivery.** Marketing templates in particular can
+  be dropped by Meta's per-user marketing limits and quality rules. The node returns
+  `acceptedAt` and a `providerMessageId`; treat that as "handed over", not "read".
+
+If a workflow depends on the message actually arriving, check status in WA.cr rather than
+inferring it from this node's output.
+
 ### WA.cr Trigger
 
 Starts a workflow when an Auto Flow **Webhook** step fires.
