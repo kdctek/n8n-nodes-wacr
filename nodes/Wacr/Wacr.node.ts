@@ -11,6 +11,9 @@ import {
 	getTemplateNames,
 	getTemplateVariables,
 	getTemplates,
+	searchContacts,
+	searchTemplateNames,
+	searchTemplates,
 	parseJsonArrayParameter,
 	parseJsonParameter,
 	toList,
@@ -96,6 +99,7 @@ export class Wacr implements INodeType {
 
 	methods = {
 		loadOptions: { getTemplates, getTemplateNames },
+		listSearch: { searchContacts, searchTemplates, searchTemplateNames },
 		resourceMapping: { getTemplateVariables },
 	};
 
@@ -172,7 +176,7 @@ async function sendMessage(this: IExecuteFunctions, i: number): Promise<IDataObj
 	} else if (messageType === 'interactive') {
 		body.message = buildInteractiveMessage.call(this, i);
 	} else if (messageType === 'template') {
-		body.templateName = this.getNodeParameter('templateName', i) as string;
+		body.templateName = this.getNodeParameter('templateName', i, undefined, { extractValue: true }) as string;
 		body.languageCode = this.getNodeParameter('languageCode', i) as string;
 
 		// Mapped fields are the default; raw JSON stays available for templates the
@@ -226,7 +230,7 @@ async function contactOperation(
 			return [await wacrApiRequest.call(this, 'POST', '/v1/contacts', body)];
 		}
 		case 'get': {
-			const id = this.getNodeParameter('contactId', i) as string;
+			const id = this.getNodeParameter('contactId', i, undefined, { extractValue: true }) as string;
 			const response = await wacrApiRequest.call(this, 'GET', `/v1/contacts/${id}`);
 			return [(response.contact as IDataObject) ?? response];
 		}
@@ -239,7 +243,7 @@ async function contactOperation(
 			return (response.contacts as IDataObject[]) ?? [];
 		}
 		case 'update': {
-			const id = this.getNodeParameter('contactId', i) as string;
+			const id = this.getNodeParameter('contactId', i, undefined, { extractValue: true }) as string;
 			const body = contactPayload(this.getNodeParameter('updateFields', i, {}) as IDataObject);
 			if (!Object.keys(body).length) {
 				throw new NodeOperationError(this.getNode(), 'Set at least one field to update.', {
@@ -249,7 +253,7 @@ async function contactOperation(
 			return [await wacrApiRequest.call(this, 'PATCH', `/v1/contacts/${id}`, body)];
 		}
 		case 'delete': {
-			const id = this.getNodeParameter('contactId', i) as string;
+			const id = this.getNodeParameter('contactId', i, undefined, { extractValue: true }) as string;
 			const response = await wacrApiRequest.call(this, 'DELETE', `/v1/contacts/${id}`);
 			// n8n's UX guidelines ask a delete to return { deleted: true }, so the
 			// branch still carries an item when the API answers with an empty body.
@@ -269,7 +273,7 @@ async function commentOperation(
 	operation: string,
 	i: number,
 ): Promise<IDataObject[]> {
-	const contact = encodeURIComponent(this.getNodeParameter('contact', i) as string);
+	const contact = encodeURIComponent(this.getNodeParameter('contact', i, undefined, { extractValue: true }) as string);
 	const endpoint = `/v1/conversations/${contact}/comments`;
 
 	if (operation === 'add') {
@@ -352,7 +356,7 @@ async function broadcastOperation(
 		}
 		const body: IDataObject = {
 			name: this.getNodeParameter('name', i) as string,
-			templateId: this.getNodeParameter('templateId', i) as string,
+			templateId: this.getNodeParameter('templateId', i, undefined, { extractValue: true }) as string,
 			variables: parseJsonParameter(this.getNodeParameter('variables', i, '{}'), 'Variables'),
 		};
 		if (recipients.groupId) body.groupId = recipients.groupId;

@@ -129,6 +129,10 @@ runner.
 filters), **Update**, **Delete** (returns `{ "deleted": true }`). Deleting a contact retains
 their conversation history.
 
+Operations that address one contact use a **Resource Locator** — pick from a searchable list,
+or switch to **By ID** to paste a UUID or drive it from an expression. The same applies to
+Note → Contact and to the template pickers on Message and Broadcast.
+
 Tags are entered comma-separated and sent as an array. Attributes are a JSON object. On
 **Update**, both replace what is stored rather than merging.
 

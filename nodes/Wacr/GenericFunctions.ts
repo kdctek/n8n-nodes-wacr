@@ -4,6 +4,8 @@ import type {
 	IHttpRequestMethods,
 	IHttpRequestOptions,
 	ILoadOptionsFunctions,
+	INodeListSearchItems,
+	INodeListSearchResult,
 	INodePropertyOptions,
 	JsonObject,
 	ResourceMapperFields,
@@ -239,4 +241,80 @@ export async function getTemplateVariables(
 		templates.find((row) => row.name === name);
 
 	return { fields: extractTemplateFields(match?.components) as ResourceMapperFields['fields'] };
+}
+
+/* ── resource locator searches ────────────────────────────────────────────── */
+
+/**
+ * Label a contact for a picker. Workspaces can mask phone numbers, so the name
+ * is preferred and the number only ever supplements it.
+ */
+function contactLabel(contact: IDataObject): string {
+	const name = (contact.displayName as string | null) ?? '';
+	const phone = (contact.phoneE164 as string | null) ?? '';
+	if (name && phone) return `${name} (${phone})`;
+	return name || phone || (contact.id as string);
+}
+
+/**
+ * Contact picker. The search term goes to the API as `q` rather than being
+ * filtered here, so it matches across the whole workspace and not just the
+ * first page.
+ */
+export async function searchContacts(
+	this: ILoadOptionsFunctions,
+	filter?: string,
+): Promise<INodeListSearchResult> {
+	const qs: IDataObject = { limit: 100 };
+	if (filter) qs.q = filter;
+
+	const response = await wacrApiRequest.call(this, 'GET', '/v1/contacts', {}, qs);
+	const results: INodeListSearchItems[] = ((response.contacts as IDataObject[]) ?? [])
+		.filter((contact) => Boolean(contact.id))
+		.map((contact) => ({ name: contactLabel(contact), value: contact.id as string }));
+
+	return { results };
+}
+
+/** Templates keyed by UUID — what a broadcast takes. */
+export async function searchTemplates(
+	this: ILoadOptionsFunctions,
+	filter?: string,
+): Promise<INodeListSearchResult> {
+	const templates = await listTemplates(this);
+	const needle = filter?.toLowerCase() ?? '';
+
+	const results: INodeListSearchItems[] = templates
+		.filter((row) => Boolean(row.id))
+		.filter((row) => !needle || (row.name ?? '').toLowerCase().includes(needle))
+		.map((row) => ({
+			name: `${row.name} (${row.language ?? '—'})${row.status ? ` · ${row.status}` : ''}`,
+			value: row.id as string,
+		}));
+
+	return { results };
+}
+
+/**
+ * Templates keyed by NAME — what a send takes. Names repeat once per
+ * translation, so they are de-duplicated; the language is a separate field.
+ */
+export async function searchTemplateNames(
+	this: ILoadOptionsFunctions,
+	filter?: string,
+): Promise<INodeListSearchResult> {
+	const templates = await listTemplates(this);
+	const needle = filter?.toLowerCase() ?? '';
+	const seen = new Set<string>();
+	const results: INodeListSearchItems[] = [];
+
+	for (const row of templates) {
+		const name = row.name as string;
+		if (seen.has(name)) continue;
+		if (needle && !name.toLowerCase().includes(needle)) continue;
+		seen.add(name);
+		results.push({ name, value: name });
+	}
+
+	return { results };
 }

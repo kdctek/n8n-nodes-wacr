@@ -22,6 +22,12 @@ All notable changes to this project are documented here. The format follows
   manual: copy the node's URL into the Auto Flow's Webhook step and add a matching secret
   header. Optional filters for Automation ID and test events.
 
+- **Resource Locators** on every field that addresses a record. Contact (Get, Update,
+  Delete), Note → Contact, Broadcast → Template and Message → Template now offer a
+  searchable **From List** picker, with **By ID** kept for expressions. Contact IDs are
+  validated as UUIDs; the Note locator is deliberately unvalidated because the API also
+  accepts a short ID or E.164 digits.
+
 ### Changed
 
 - Contact → Delete now returns `{ "deleted": true }` so downstream nodes still receive an

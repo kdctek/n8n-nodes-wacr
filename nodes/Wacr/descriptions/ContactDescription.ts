@@ -1,5 +1,7 @@
 import type { INodeProperties } from 'n8n-workflow';
 
+import { contactLocator } from './locators';
+
 const showFor = (operations: string[]) => ({
 	show: { resource: ['contact'], operation: operations },
 });
@@ -38,15 +40,12 @@ export const contactOperations: INodeProperties[] = [
 ];
 
 export const contactFields: INodeProperties[] = [
-	{
-		displayName: 'Contact ID',
+	contactLocator({
+		displayName: 'Contact',
 		name: 'contactId',
-		type: 'string',
-		required: true,
-		default: '',
-		description: 'The contact UUID returned by Get Many or Create or Update',
+		description: 'The contact to act on',
 		displayOptions: showFor(['get', 'update', 'delete']),
-	},
+	}),
 
 	/* ── create or update ─────────────────────────────────────────────────── */
 	{

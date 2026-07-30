@@ -1,5 +1,7 @@
 import type { INodeProperties } from 'n8n-workflow';
 
+import { contactOrPhoneLocator } from './locators';
+
 const showFor = (operations: string[]) => ({
 	show: { resource: ['comment'], operation: operations },
 });
@@ -30,16 +32,13 @@ export const commentOperations: INodeProperties[] = [
 ];
 
 export const commentFields: INodeProperties[] = [
-	{
+	contactOrPhoneLocator({
 		displayName: 'Contact',
 		name: 'contact',
-		type: 'string',
-		required: true,
-		default: '',
-		placeholder: 'e.g. +919876543210',
-		description: 'Contact UUID, business short ID, or E.164 digits. Notes are channel-agnostic — they hang off the contact, not a channel.',
+		description:
+			'Whose conversation to annotate. Notes are channel-agnostic — they hang off the contact, not a channel. By ID also accepts a business short ID or E.164 digits.',
 		displayOptions: showFor(['add', 'getAll']),
-	},
+	}),
 	{
 		displayName: 'Note',
 		name: 'body',

@@ -62,10 +62,19 @@ function makeContext({ port, params, items = [{ json: {} }], binary }) {
 			parameters: {},
 		}),
 		continueOnFail: () => false,
-		getNodeParameter(name, _i, fallback) {
-			if (name in params) return params[name];
-			if (fallback !== undefined) return fallback;
-			throw new Error(`test did not set parameter '${name}'`);
+		getNodeParameter(name, _i, fallback, options) {
+			let value;
+			if (name in params) value = params[name];
+			else if (fallback !== undefined) value = fallback;
+			else throw new Error(`test did not set parameter '${name}'`);
+
+			// Mirror n8n: a resourceLocator parameter read with extractValue gets
+			// unwrapped to whichever mode's value the user chose. Tests may pass
+			// either the locator object or a bare string.
+			if (options?.extractValue && value && typeof value === 'object' && 'value' in value) {
+				return value.value;
+			}
+			return value;
 		},
 		getCredentials: async () => ({ environment: 'custom', customBaseUrl: baseUrl, apiKey: 'wacr_test_x' }),
 		helpers: {
@@ -1065,4 +1074,71 @@ test('template send: an unmapped template omits components entirely', async () =
 	});
 
 	assert.ok(!('components' in received[0].body));
+});
+
+/* ── resource locators ────────────────────────────────────────────────────── */
+
+test('locator: a contact chosen From List is unwrapped to its ID', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'get',
+			contactId: { __rl: true, mode: 'list', value: 'c-uuid-1' },
+		},
+	});
+
+	assert.strictEqual(received[0].path, '/v1/contacts/c-uuid-1');
+});
+
+test('locator: a contact typed By ID is unwrapped the same way', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'delete',
+			contactId: { __rl: true, mode: 'id', value: 'c-uuid-2' },
+		},
+	});
+
+	assert.strictEqual(received[0].method, 'DELETE');
+	assert.strictEqual(received[0].path, '/v1/contacts/c-uuid-2');
+});
+
+test('locator: a note contact locator still URL-encodes a phone number', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'comment',
+			operation: 'getAll',
+			contact: { __rl: true, mode: 'id', value: '+919876543210' },
+			limit: 50,
+			filters: {},
+		},
+	});
+
+	assert.ok(
+		received[0].path.includes('%2B919876543210'),
+		`expected an encoded phone in the path, got ${received[0].path}`,
+	);
+});
+
+test('locator: a template send unwraps the template name', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'message',
+			operation: 'send',
+			channel: 'whatsapp',
+			to: '+919876543210',
+			messageType: 'template',
+			templateName: { __rl: true, mode: 'list', value: 'order_update' },
+			languageCode: 'en',
+			variableInput: 'mapped',
+			templateVariables: { value: {} },
+			options: {},
+		},
+	});
+
+	assert.strictEqual(received[0].body.templateName, 'order_update');
 });

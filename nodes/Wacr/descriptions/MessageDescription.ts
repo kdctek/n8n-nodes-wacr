@@ -1,5 +1,7 @@
 import type { INodeProperties } from 'n8n-workflow';
 
+import { templateLocator } from './locators';
+
 const showFor = (extra: Record<string, string[]> = {}) => ({
 	show: { resource: ['message'], operation: ['send'], ...extra },
 });
@@ -98,17 +100,14 @@ export const messageFields: INodeProperties[] = [
 		description: 'Message body, up to 4096 characters',
 		displayOptions: showFor({ channel: ['whatsapp'], messageType: ['text'] }),
 	},
-	{
-		displayName: 'Template Name or ID',
+	templateLocator({
+		displayName: 'Template',
 		name: 'templateName',
-		type: 'options',
-		typeOptions: { loadOptionsMethod: 'getTemplateNames' },
-		required: true,
-		default: '',
-		description:
-			'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+		description: 'The approved template to send. Templates are addressed by name, with the language set below.',
+		searchMethod: 'searchTemplateNames',
+		placeholder: 'e.g. order_update',
 		displayOptions: showFor({ channel: ['whatsapp'], messageType: ['template'] }),
-	},
+	}),
 	{
 		displayName: 'Language Code',
 		name: 'languageCode',

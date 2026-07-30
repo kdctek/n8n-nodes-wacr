@@ -1,5 +1,7 @@
 import type { INodeProperties } from 'n8n-workflow';
 
+import { templateLocator } from './locators';
+
 const showFor = (operations: string[]) => ({
 	show: { resource: ['broadcast'], operation: operations },
 });
@@ -39,17 +41,14 @@ export const broadcastFields: INodeProperties[] = [
 		description: 'Label shown in the console broadcast list',
 		displayOptions: showFor(['create']),
 	},
-	{
-		displayName: 'Template Name or ID',
+	templateLocator({
+		displayName: 'Template',
 		name: 'templateId',
-		type: 'options',
-		typeOptions: { loadOptionsMethod: 'getTemplates' },
-		required: true,
-		default: '',
-		description:
-			'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
+		description: 'The approved template this broadcast sends',
+		searchMethod: 'searchTemplates',
+		placeholder: 'e.g. 3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071',
 		displayOptions: showFor(['create']),
-	},
+	}),
 	{
 		displayName: 'Variables',
 		name: 'variables',
