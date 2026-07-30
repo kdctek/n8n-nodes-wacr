@@ -109,13 +109,20 @@ export const messageFields: INodeProperties[] = [
 		displayOptions: showFor({ channel: ['whatsapp'], messageType: ['template'] }),
 	}),
 	{
-		displayName: 'Language Code',
+		// Loaded from the chosen template's own translations rather than typed —
+		// a name exists once per language and guessing the code fails at send time.
+		displayName: 'Language Name or ID',
 		name: 'languageCode',
-		type: 'string',
+		type: 'options',
+		typeOptions: {
+			loadOptionsMethod: 'getTemplateLanguages',
+			loadOptionsDependsOn: ['templateName'],
+		},
 		required: true,
 		default: 'en',
-		placeholder: 'e.g. en_US',
-		description: 'Language of the approved template, e.g. en, en_US or hi',
+		// Wording is pinned by node-param-description-wrong-for-dynamic-options.
+		description:
+			'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 		displayOptions: showFor({ channel: ['whatsapp'], messageType: ['template'] }),
 	},
 	{

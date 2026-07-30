@@ -8,6 +8,7 @@ import type {
 import { NodeOperationError } from 'n8n-workflow';
 
 import {
+	getTemplateLanguages,
 	getTemplateNames,
 	getTemplateVariables,
 	getTemplates,
@@ -98,7 +99,7 @@ export class Wacr implements INodeType {
 	};
 
 	methods = {
-		loadOptions: { getTemplates, getTemplateNames },
+		loadOptions: { getTemplates, getTemplateNames, getTemplateLanguages },
 		listSearch: { searchContacts, searchTemplates, searchTemplateNames },
 		resourceMapping: { getTemplateVariables },
 	};

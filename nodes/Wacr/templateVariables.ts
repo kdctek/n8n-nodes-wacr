@@ -51,10 +51,15 @@ function placeholders(text: string): Placeholder[] {
 
 const asArray = (v: unknown): IDataObject[] => (Array.isArray(v) ? (v as IDataObject[]) : []);
 
-const field = (id: string, displayName: string): TemplateField => ({
+/**
+ * A template placeholder must be filled or Meta rejects the send, so slots
+ * default to required. Location `name` and `address` are the exception — Meta
+ * treats those as optional decoration on the coordinates.
+ */
+const field = (id: string, displayName: string, required = true): TemplateField => ({
 	id,
 	displayName,
-	required: true,
+	required,
 	defaultMatch: false,
 	display: true,
 	type: 'string',
@@ -84,8 +89,8 @@ export function extractTemplateFields(components: unknown): TemplateField[] {
 				// `name`, not `title`.
 				fields.push(field('header_location_latitude', 'Header latitude'));
 				fields.push(field('header_location_longitude', 'Header longitude'));
-				fields.push(field('header_location_name', 'Header location name'));
-				fields.push(field('header_location_address', 'Header address'));
+				fields.push(field('header_location_name', 'Header location name', false));
+				fields.push(field('header_location_address', 'Header address', false));
 			} else {
 				// Media headers take a link rather than a substitution. The format is
 				// encoded in the id so a send can rebuild the parameter without

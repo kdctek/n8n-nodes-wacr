@@ -1061,6 +1061,7 @@ test('trigger: the Automation ID filter drops events from other flows', async ()
 /* ── template variables ───────────────────────────────────────────────────── */
 
 const { extractTemplateFields } = require('../dist/nodes/Wacr/templateVariables.js');
+const { getTemplateVariables } = require('../dist/nodes/Wacr/GenericFunctions.js');
 
 /** A template exercising every slot kind Meta supports. */
 const richTemplate = [
@@ -1263,6 +1264,17 @@ test('template fields: a LOCATION header yields four slots, not a media link', (
 	);
 });
 
+test('template fields: only the location coordinates are required', () => {
+	const f = extractTemplateFields([{ type: 'HEADER', format: 'LOCATION' }]);
+	const required = Object.fromEntries(f.map((x) => [x.id, x.required]));
+	assert.deepStrictEqual(required, {
+		header_location_latitude: true,
+		header_location_longitude: true,
+		header_location_name: false,
+		header_location_address: false,
+	});
+});
+
 test('template send: a location header becomes one location parameter', async () => {
 	const { received } = await run({
 		params: {
@@ -1363,4 +1375,36 @@ test('interactive: duplicate button labels fail before any request', async () =>
 		}),
 		/two entries labelled "Yes"/i,
 	);
+});
+
+test('getTemplateVariables: unwraps the templateName resource locator', async () => {
+	// Regression: templateName became a resourceLocator, and reading it without
+	// extractValue silently yielded zero fields in the real n8n UI.
+	const { server, received, port } = await startServer(() => ({
+		json: {
+			ok: true,
+			templates: [
+				{ id: 't1', name: 'team_invite', language: 'en', components: [{ type: 'BODY', text: 'Hi {{1}}' }] },
+			],
+		},
+	}));
+	try {
+		const ctx = makeContext({
+			port,
+			params: {
+				templateName: { __rl: true, mode: 'list', value: 'team_invite' },
+				languageCode: 'en',
+			},
+		});
+		// ILoadOptionsFunctions passes (name, fallback, options) — no item index.
+		const loadCtx = {
+			...ctx,
+			getNodeParameter: (name, fallback, options) => ctx.getNodeParameter(name, 0, fallback, options),
+		};
+		const result = await getTemplateVariables.call(loadCtx);
+		assert.deepStrictEqual(result.fields.map((f) => f.id), ['body_1']);
+		assert.strictEqual(received[0].path, '/v1/templates');
+	} finally {
+		server.close();
+	}
 });

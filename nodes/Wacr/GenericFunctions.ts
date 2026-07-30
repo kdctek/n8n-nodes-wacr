@@ -231,7 +231,10 @@ export async function getTemplateNames(this: ILoadOptionsFunctions): Promise<INo
 export async function getTemplateVariables(
 	this: ILoadOptionsFunctions,
 ): Promise<ResourceMapperFields> {
-	const name = this.getNodeParameter('templateName', '') as string;
+	// `templateName` is a resourceLocator, so it arrives wrapped — without
+	// extractValue this reads the locator object, never matches a template name,
+	// and the mapper silently offers zero fields.
+	const name = this.getNodeParameter('templateName', '', { extractValue: true }) as string;
 	if (!name) return { fields: [] };
 
 	const language = this.getNodeParameter('languageCode', '') as string;
@@ -317,4 +320,34 @@ export async function searchTemplateNames(
 	}
 
 	return { results };
+}
+
+/**
+ * Languages the chosen template actually exists in.
+ *
+ * A template name is not unique — Meta stores one row per translation, and the
+ * placeholders can differ between them. Listing only the real translations stops
+ * users guessing a language code that would be rejected at send time.
+ */
+export async function getTemplateLanguages(
+	this: ILoadOptionsFunctions,
+): Promise<INodePropertyOptions[]> {
+	const name = this.getNodeParameter('templateName', '', { extractValue: true }) as string;
+	const templates = await listTemplates(this);
+
+	const matches = name ? templates.filter((row) => row.name === name) : templates;
+	const seen = new Set<string>();
+	const options: INodePropertyOptions[] = [];
+
+	for (const row of matches) {
+		const language = row.language;
+		if (!language || seen.has(language)) continue;
+		seen.add(language);
+		options.push({
+			name: row.status ? `${language} · ${row.status}` : language,
+			value: language,
+		});
+	}
+
+	return options.sort((a, b) => String(a.value).localeCompare(String(b.value)));
 }

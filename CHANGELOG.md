@@ -30,6 +30,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Template variables never appeared.** Converting Template to a resource locator broke the
+  variable mapper: it read the locator object rather than the template name, so it silently
+  offered zero fields. Only caught by running against a live n8n.
+- Location header `name` and `address` are optional, matching Meta — previously the mapper
+  marked every slot required.
+
 - List messages now nest **Rows inside Sections** instead of repeating a Section Title on
   every row, and enforce Meta's real limits: at most 10 sections and **10 rows cumulative
   across all sections**, not per section. Sections left empty are dropped rather than sent.
@@ -47,6 +53,10 @@ All notable changes to this project are documented here. The format follows
   node classes was not enough.
 
 ### Changed
+
+- **Language Code is now a dropdown** loaded from the chosen template's own translations.
+  A template name exists once per language and the placeholders can differ between them, so
+  typing a code that did not exist failed only at send time.
 
 - Environment labels read `Production (api.wa.cr)` and `Staging (api.wacart.dev)`; they were
   Title-cased to `Api.wa.cr`, which misrenders the hostname.
