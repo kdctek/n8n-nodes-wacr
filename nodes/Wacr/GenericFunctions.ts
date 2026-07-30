@@ -363,7 +363,13 @@ export async function getTemplateLanguages(
 		const language = row.language;
 		if (!language || seen.has(language)) continue;
 		seen.add(language);
-		options.push({ name: `${language}${categorySuffix(row)}`, value: language });
+		// The template picker above already carries the category, so repeating it
+		// here would be noise. Status is the useful qualifier at this level: a
+		// template can be approved in one language and still pending in another.
+		options.push({
+			name: row.status ? `${language} · ${row.status}` : language,
+			value: language,
+		});
 	}
 
 	return options.sort((a, b) => String(a.value).localeCompare(String(b.value)));
