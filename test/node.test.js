@@ -267,17 +267,24 @@ test('interactive: reply buttons carry header, footer and slugged default IDs', 
 	});
 });
 
-test('interactive: list groups rows into sections by section title, in first-seen order', async () => {
+test('interactive: nested sections keep their own rows, in order', async () => {
 	const { received } = await run({
 		params: interactive({
 			interactiveType: 'list',
 			interactiveBody: 'Pick a delivery slot',
 			listButton: 'View slots',
-			listRows: {
-				row: [
-					{ sectionTitle: 'Morning', title: '9am to 11am', description: 'Fastest' },
-					{ sectionTitle: 'Evening', title: '5pm to 7pm', id: 'eve' },
-					{ sectionTitle: 'Morning', title: '11am to 1pm' },
+			listSections: {
+				section: [
+					{
+						title: 'Morning',
+						rows: {
+							row: [
+								{ title: '9am to 11am', description: 'Fastest' },
+								{ title: '11am to 1pm' },
+							],
+						},
+					},
+					{ title: 'Evening', rows: { row: [{ title: '5pm to 7pm', id: 'eve' }] } },
 				],
 			},
 		}),
@@ -298,19 +305,134 @@ test('interactive: list groups rows into sections by section title, in first-see
 	});
 });
 
-test('interactive: an unnamed section omits the title key entirely', async () => {
+test('interactive: an untitled section omits the title key entirely', async () => {
 	const { received } = await run({
 		params: interactive({
 			interactiveType: 'list',
 			interactiveBody: 'Choose',
 			listButton: 'Open',
-			listRows: { row: [{ title: 'Only option' }] },
+			listSections: { section: [{ rows: { row: [{ title: 'Only option' }] } }] },
 		}),
 	});
 
 	assert.deepStrictEqual(received[0].body.message.interactive.action.sections, [
 		{ rows: [{ id: 'only_option', title: 'Only option' }] },
 	]);
+});
+
+test('interactive: a section with no rows is dropped rather than sent empty', async () => {
+	const { received } = await run({
+		params: interactive({
+			interactiveType: 'list',
+			interactiveBody: 'Choose',
+			listButton: 'Open',
+			listSections: {
+				section: [
+					{ title: 'Empty', rows: {} },
+					{ title: 'Real', rows: { row: [{ title: 'Pick me' }] } },
+				],
+			},
+		}),
+	});
+
+	assert.deepStrictEqual(received[0].body.message.interactive.action.sections, [
+		{ title: 'Real', rows: [{ id: 'pick_me', title: 'Pick me' }] },
+	]);
+});
+
+test('interactive: a list with no rows at all fails before any request', async () => {
+	await assert.rejects(
+		run({
+			params: interactive({
+				interactiveType: 'list',
+				interactiveBody: 'Choose',
+				listButton: 'Open',
+				listSections: { section: [{ title: 'Empty', rows: {} }] },
+			}),
+		}),
+		/Sections has no rows/i,
+	);
+});
+
+test('interactive: the 10-row cap is cumulative across sections, not per section', async () => {
+	// Six rows in each of two sections: legal per section, illegal in total.
+	const rows = (n, prefix) => ({ row: Array.from({ length: n }, (_, k) => ({ title: `${prefix}${k}` })) });
+	await assert.rejects(
+		run({
+			params: interactive({
+				interactiveType: 'list',
+				interactiveBody: 'Choose',
+				listButton: 'Open',
+				listSections: {
+					section: [
+						{ title: 'A', rows: rows(6, 'a') },
+						{ title: 'B', rows: rows(6, 'b') },
+					],
+				},
+			}),
+		}),
+		/12 rows in total, which is more than WhatsApp allows/i,
+	);
+});
+
+test('interactive: more than ten sections fails before any request', async () => {
+	await assert.rejects(
+		run({
+			params: interactive({
+				interactiveType: 'list',
+				interactiveBody: 'Choose',
+				listButton: 'Open',
+				listSections: {
+					section: Array.from({ length: 11 }, (_, k) => ({
+						title: `S${k}`,
+						rows: { row: [{ title: `r${k}` }] },
+					})),
+				},
+			}),
+		}),
+		/11 entries, which is more than WhatsApp allows/i,
+	);
+});
+
+test('interactive: a location header uses Meta names — latitude, longitude, name, address', async () => {
+	const { received } = await run({
+		params: interactive({
+			interactiveType: 'button',
+			headerType: 'location',
+			headerLatitude: '19.076',
+			headerLongitude: '72.8777',
+			headerLocationName: 'Gateway of India',
+			headerLocationAddress: 'Apollo Bandar, Colaba, Mumbai',
+			interactiveBody: 'Collect from here?',
+			buttons: { button: [{ title: 'Yes' }] },
+		}),
+	});
+
+	assert.deepStrictEqual(received[0].body.message.interactive.header, {
+		type: 'location',
+		location: {
+			latitude: 19.076,
+			longitude: 72.8777,
+			name: 'Gateway of India',
+			address: 'Apollo Bandar, Colaba, Mumbai',
+		},
+	});
+});
+
+test('interactive: a location header without coordinates is omitted, not half-sent', async () => {
+	const { received } = await run({
+		params: interactive({
+			interactiveType: 'button',
+			headerType: 'location',
+			headerLatitude: '',
+			headerLongitude: '',
+			headerLocationName: 'Nowhere',
+			interactiveBody: 'Body',
+			buttons: { button: [{ title: 'Ok' }] },
+		}),
+	});
+
+	assert.ok(!('header' in received[0].body.message.interactive));
 });
 
 test('interactive: cta_url nests display text and url under parameters', async () => {
@@ -488,20 +610,6 @@ test('interactive: more than three buttons fails before any request', async () =
 			}),
 		}),
 		/more than WhatsApp allows/i,
-	);
-});
-
-test('interactive: an empty list fails before any request', async () => {
-	await assert.rejects(
-		run({
-			params: interactive({
-				interactiveType: 'list',
-				interactiveBody: 'Choose',
-				listButton: 'Open',
-				listRows: {},
-			}),
-		}),
-		/Rows is empty/i,
 	);
 });
 
@@ -962,7 +1070,7 @@ const richTemplate = [
 	{
 		type: 'BUTTONS',
 		buttons: [
-			{ type: 'QUICK_REPLY', text: 'Ignore me' },
+			{ type: 'QUICK_REPLY', text: 'Stop' },
 			{ type: 'URL', text: 'Track', url: 'https://example.com/{{1}}' },
 		],
 	},
@@ -971,7 +1079,7 @@ const richTemplate = [
 test('template fields: every placeholder becomes one mappable slot', () => {
 	assert.deepStrictEqual(
 		extractTemplateFields(richTemplate).map((f) => f.id),
-		['header_1', 'body_1', 'body_2', 'button_1_1'],
+		['header_1', 'body_1', 'body_2', 'button_0_payload', 'button_1_url_1'],
 	);
 });
 
@@ -1004,7 +1112,7 @@ test('template send: mapped variables become an ordered components array', async
 					body_2: 'Friday',
 					body_1: '1234',
 					header_1: 'Sam',
-					button_1_1: 'track/1234',
+					button_1_url_1: 'track/1234',
 				},
 			},
 			options: {},
@@ -1141,4 +1249,118 @@ test('locator: a template send unwraps the template name', async () => {
 	});
 
 	assert.strictEqual(received[0].body.templateName, 'order_update');
+});
+
+test('template fields: a LOCATION header yields four slots, not a media link', () => {
+	assert.deepStrictEqual(
+		extractTemplateFields([{ type: 'HEADER', format: 'LOCATION' }]).map((f) => f.id),
+		[
+			'header_location_latitude',
+			'header_location_longitude',
+			'header_location_name',
+			'header_location_address',
+		],
+	);
+});
+
+test('template send: a location header becomes one location parameter', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'message',
+			operation: 'send',
+			channel: 'whatsapp',
+			to: '+919876543210',
+			messageType: 'template',
+			templateName: 'store_pickup',
+			languageCode: 'en',
+			variableInput: 'mapped',
+			templateVariables: {
+				value: {
+					header_location_latitude: '19.076',
+					header_location_longitude: '72.8777',
+					header_location_name: 'Gateway of India',
+					header_location_address: 'Apollo Bandar, Colaba, Mumbai',
+				},
+			},
+			options: {},
+		},
+	});
+
+	assert.deepStrictEqual(received[0].body.components, [
+		{
+			type: 'header',
+			parameters: [
+				{
+					type: 'location',
+					location: {
+						latitude: 19.076,
+						longitude: 72.8777,
+						name: 'Gateway of India',
+						address: 'Apollo Bandar, Colaba, Mumbai',
+					},
+				},
+			],
+		},
+	]);
+});
+
+test('template fields: each button sub-type gets the slot it needs, and only that', () => {
+	const ids = extractTemplateFields([
+		{
+			type: 'BUTTONS',
+			buttons: [
+				{ type: 'QUICK_REPLY', text: 'Stop' },
+				{ type: 'URL', text: 'Track', url: 'https://example.com/{{1}}' },
+				{ type: 'PHONE_NUMBER', text: 'Call us', phone_number: '+911234567890' },
+				{ type: 'COPY_CODE', text: 'Copy' },
+			],
+		},
+	]).map((f) => f.id);
+
+	// PHONE_NUMBER takes no send-time parameter, so it contributes nothing.
+	assert.deepStrictEqual(ids, ['button_0_payload', 'button_1_url_1', 'button_3_coupon']);
+});
+
+test('template send: mixed buttons each build their own parameter shape', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'message',
+			operation: 'send',
+			channel: 'whatsapp',
+			to: '+919876543210',
+			messageType: 'template',
+			templateName: 'promo',
+			languageCode: 'en',
+			variableInput: 'mapped',
+			templateVariables: {
+				value: {
+					button_0_payload: 'STOP_PROMOS',
+					button_1_url_1: 'orders/1234',
+					button_3_coupon: 'SAVE20',
+				},
+			},
+			options: {},
+		},
+	});
+
+	assert.deepStrictEqual(received[0].body.components, [
+		{ type: 'button', sub_type: 'quick_reply', index: '0', parameters: [{ type: 'payload', payload: 'STOP_PROMOS' }] },
+		{ type: 'button', sub_type: 'url', index: '1', parameters: [{ type: 'text', text: 'orders/1234' }] },
+		{ type: 'button', sub_type: 'copy_code', index: '3', parameters: [{ type: 'coupon_code', coupon_code: 'SAVE20' }] },
+	]);
+});
+
+test('interactive: duplicate button labels fail before any request', async () => {
+	await assert.rejects(
+		run({
+			params: interactive({
+				interactiveType: 'button',
+				interactiveBody: 'Pick one',
+				buttons: { button: [{ title: 'Yes' }, { title: 'Yes' }] },
+			}),
+		}),
+		/two entries labelled "Yes"/i,
+	);
 });

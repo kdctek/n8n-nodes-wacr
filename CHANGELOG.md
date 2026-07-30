@@ -30,6 +30,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- List messages now nest **Rows inside Sections** instead of repeating a Section Title on
+  every row, and enforce Meta's real limits: at most 10 sections and **10 rows cumulative
+  across all sections**, not per section. Sections left empty are dropped rather than sent.
+- Interactive headers support **Location** — `latitude`, `longitude`, `name` and `address`
+  (Meta names the label `name`, not `title`).
+- Template `LOCATION`-format headers were treated as a media link and would have sent a
+  malformed `{ link }` parameter. They now offer four slots and build a location parameter.
+- Template buttons other than URL got no variable slot at all. **Quick Reply** (`payload`)
+  and **Copy Code** (`coupon_code`) are now mapped, each building its own parameter shape;
+  Phone Number correctly contributes nothing, since it takes no send-time parameter.
+- Interactive reply buttons now reject duplicate labels, which WhatsApp requires to be unique.
+
 - Both credentials showed a generic `?` placeholder in the credential dialog. A credential
   declares its icon separately from the node — `ICredentialType.icon` — so adding it to the
   node classes was not enough.

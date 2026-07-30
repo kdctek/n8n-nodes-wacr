@@ -13,7 +13,9 @@ import { NodeOperationError } from 'n8n-workflow';
 
 /** Meta's limits. Exceeding any of these is rejected upstream. */
 const MAX_BUTTONS = 3;
+/** Meta: "up to 10 rows for all sections combined" — cumulative, not per section. */
 const MAX_ROWS = 10;
+const MAX_SECTIONS = 10;
 
 /** Default an option's echo-back ID from its label. */
 const slug = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, '_');
@@ -48,6 +50,24 @@ function buildHeader(this: IExecuteFunctions, i: number): IDataObject | undefine
 	if (headerType === 'text') {
 		const text = this.getNodeParameter('headerText', i, '') as string;
 		return text ? { type: 'text', text } : undefined;
+	}
+
+	if (headerType === 'location') {
+		const latitude = this.getNodeParameter('headerLatitude', i, '') as string;
+		const longitude = this.getNodeParameter('headerLongitude', i, '') as string;
+		if (!latitude || !longitude) return undefined;
+
+		// Meta wants numbers; coerce when the input is numeric and pass anything
+		// else through so an expression returning a string still reaches the API.
+		const coord = (v: string): number | string => (Number.isFinite(Number(v)) ? Number(v) : v);
+		const location: IDataObject = { latitude: coord(latitude), longitude: coord(longitude) };
+
+		const name = this.getNodeParameter('headerLocationName', i, '') as string;
+		const address = this.getNodeParameter('headerLocationAddress', i, '') as string;
+		if (name) location.name = name;
+		if (address) location.address = address;
+
+		return { type: 'location', location };
 	}
 
 	const link = this.getNodeParameter('headerMediaUrl', i, '') as string;
@@ -93,6 +113,17 @@ export function buildInteractiveMessage(this: IExecuteFunctions, i: number): IDa
 					{ itemIndex: i, description: `Remove ${buttons.length - MAX_BUTTONS} so that at most ${MAX_BUTTONS} remain.` },
 				);
 			}
+			// Meta: button labels "must be unique if using multiple buttons".
+			const titles = buttons.map((b) => b.title.trim());
+			const duplicate = titles.find((t, n) => titles.indexOf(t) !== n);
+			if (duplicate) {
+				throw new NodeOperationError(
+					this.getNode(),
+					`Buttons has two entries labelled "${duplicate}"`,
+					{ itemIndex: i, description: 'WhatsApp requires every button label in a message to be unique.' },
+				);
+			}
+
 			interactive.type = 'button';
 			interactive.action = {
 				buttons: buttons.map((b) => ({
@@ -104,35 +135,52 @@ export function buildInteractiveMessage(this: IExecuteFunctions, i: number): IDa
 		}
 
 		case 'list': {
-			const rows = collection.call(this, 'listRows', 'row', i) as Array<{
-				sectionTitle?: string;
-				title: string;
-				description?: string;
-				id?: string;
+			const sections = collection.call(this, 'listSections', 'section', i) as Array<{
+				title?: string;
+				rows?: { row?: Array<{ title: string; description?: string; id?: string }> };
 			}>;
-			if (!rows.length) {
-				throw new NodeOperationError(this.getNode(), 'Rows is empty', {
+
+			const built = sections.map((section) => ({
+				title: (section.title ?? '').trim(),
+				rows: section.rows?.row ?? [],
+			}));
+			const populated = built.filter((section) => section.rows.length > 0);
+			const totalRows = populated.reduce((n, section) => n + section.rows.length, 0);
+
+			if (!totalRows) {
+				throw new NodeOperationError(this.getNode(), 'Sections has no rows', {
 					itemIndex: i,
-					description: 'Add at least one row, or choose a different Interactive Type.',
+					description: 'Add at least one row to a section, or choose a different Interactive Type.',
 				});
 			}
-			if (rows.length > MAX_ROWS) {
+			if (populated.length > MAX_SECTIONS) {
 				throw new NodeOperationError(
 					this.getNode(),
-					`Rows has ${rows.length} entries, which is more than WhatsApp allows`,
-					{ itemIndex: i, description: `Remove ${rows.length - MAX_ROWS} so that at most ${MAX_ROWS} remain.` },
+					`Sections has ${populated.length} entries, which is more than WhatsApp allows`,
+					{ itemIndex: i, description: `Remove ${populated.length - MAX_SECTIONS} so that at most ${MAX_SECTIONS} remain.` },
 				);
 			}
+			if (totalRows > MAX_ROWS) {
+				throw new NodeOperationError(
+					this.getNode(),
+					`Sections hold ${totalRows} rows in total, which is more than WhatsApp allows`,
+					{
+						itemIndex: i,
+						description: `The ${MAX_ROWS}-row cap is cumulative across every section. Remove ${totalRows - MAX_ROWS}.`,
+					},
+				);
+			}
+
 			interactive.type = 'list';
 			interactive.action = {
 				button: this.getNodeParameter('listButton', i) as string,
-				sections: groupBySection(rows).map((section) => {
-					const rowObjects = section.items.map((r) => {
+				sections: populated.map((section) => {
+					const rows = section.rows.map((r) => {
 						const row: IDataObject = { id: r.id || slug(r.title), title: r.title };
 						if (r.description) row.description = r.description;
 						return row;
 					});
-					return section.title ? { title: section.title, rows: rowObjects } : { rows: rowObjects };
+					return section.title ? { title: section.title, rows } : { rows };
 				}),
 			};
 			break;

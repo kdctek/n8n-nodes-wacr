@@ -79,6 +79,13 @@ export function extractTemplateFields(components: unknown): TemplateField[] {
 				for (const p of placeholders(String(component.text ?? ''))) {
 					fields.push(field(`header_${p.key}`, `Header ${p.key}`));
 				}
+			} else if (format === 'LOCATION') {
+				// A location header is four values, not a link. Meta names the label
+				// `name`, not `title`.
+				fields.push(field('header_location_latitude', 'Header latitude'));
+				fields.push(field('header_location_longitude', 'Header longitude'));
+				fields.push(field('header_location_name', 'Header location name'));
+				fields.push(field('header_location_address', 'Header address'));
 			} else {
 				// Media headers take a link rather than a substitution. The format is
 				// encoded in the id so a send can rebuild the parameter without
@@ -98,11 +105,26 @@ export function extractTemplateFields(components: unknown): TemplateField[] {
 		}
 
 		if (kind === 'BUTTONS') {
+			// Template buttons mix types, and each takes a different send-time
+			// parameter — or none. PHONE_NUMBER and a static URL need nothing, so
+			// they get no slot. The sub-type is encoded in the id so the send can
+			// rebuild the right parameter shape without re-fetching the template.
 			asArray(component.buttons).forEach((button, index) => {
-				if (String(button.type ?? '').toUpperCase() !== 'URL') return;
-				for (const p of placeholders(String(button.url ?? ''))) {
-					const label = button.text ? `${String(button.text)} URL` : `Button ${index + 1} URL`;
-					fields.push(field(`button_${index}_${p.key}`, label));
+				const buttonType = String(button.type ?? '').toUpperCase();
+				const label = button.text ? String(button.text) : `Button ${index + 1}`;
+
+				if (buttonType === 'URL') {
+					for (const p of placeholders(String(button.url ?? ''))) {
+						fields.push(field(`button_${index}_url_${p.key}`, `${label} URL`));
+					}
+					return;
+				}
+				if (buttonType === 'QUICK_REPLY') {
+					fields.push(field(`button_${index}_payload`, `${label} payload`));
+					return;
+				}
+				if (buttonType === 'COPY_CODE') {
+					fields.push(field(`button_${index}_coupon`, `${label} coupon code`));
 				}
 			});
 		}
@@ -134,7 +156,9 @@ function bySlot(a: string, b: string): number {
 export function buildComponentsFromValues(values: IDataObject): IDataObject[] {
 	const header: Record<string, string> = {};
 	const body: Record<string, string> = {};
-	const buttons = new Map<string, Record<string, string>>();
+	/** index → { subType, slots } — sub-type comes from the id, not the template. */
+	const buttons = new Map<string, { subType: string; slots: Record<string, string> }>();
+	const headerLocation: Record<string, string> = {};
 	let headerMedia: string | undefined;
 	let headerMediaType: string | undefined;
 
@@ -144,6 +168,10 @@ export function buildComponentsFromValues(values: IDataObject): IDataObject[] {
 
 		if (id === 'header_media') {
 			headerMedia = v;
+			continue;
+		}
+		if (id.startsWith('header_location_')) {
+			headerLocation[id.slice('header_location_'.length)] = v;
 			continue;
 		}
 		if (id.startsWith('header_media_')) {
@@ -160,11 +188,24 @@ export function buildComponentsFromValues(values: IDataObject): IDataObject[] {
 			continue;
 		}
 		if (id.startsWith('button_')) {
-			const [index, ...rest] = id.slice('button_'.length).split('_');
-			if (!rest.length) continue;
-			const slot = buttons.get(index) ?? {};
-			slot[rest.join('_')] = v;
-			buttons.set(index, slot);
+			const [index, kind, ...rest] = id.slice('button_'.length).split('_');
+			if (!kind) continue;
+
+			const entry = buttons.get(index) ?? { subType: '', slots: {} };
+			if (kind === 'payload') {
+				entry.subType = 'quick_reply';
+				entry.slots.payload = v;
+			} else if (kind === 'coupon') {
+				entry.subType = 'copy_code';
+				entry.slots.coupon = v;
+			} else if (kind === 'url') {
+				if (!rest.length) continue;
+				entry.subType = 'url';
+				entry.slots[rest.join('_')] = v;
+			} else {
+				continue;
+			}
+			buttons.set(index, entry);
 		}
 	}
 
@@ -175,7 +216,18 @@ export function buildComponentsFromValues(values: IDataObject): IDataObject[] {
 
 	const out: IDataObject[] = [];
 
-	if (headerMedia) {
+	if (headerLocation.latitude && headerLocation.longitude) {
+		// Meta wants numbers for the coordinates; anything non-numeric passes
+		// through so an expression returning a string still reaches the API.
+		const coord = (v: string): number | string => (Number.isFinite(Number(v)) ? Number(v) : v);
+		const location: IDataObject = {
+			latitude: coord(headerLocation.latitude),
+			longitude: coord(headerLocation.longitude),
+		};
+		if (headerLocation.name) location.name = headerLocation.name;
+		if (headerLocation.address) location.address = headerLocation.address;
+		out.push({ type: 'header', parameters: [{ type: 'location', location }] });
+	} else if (headerMedia) {
 		const media = (headerMediaType ?? 'image').toLowerCase();
 		out.push({ type: 'header', parameters: [{ type: media, [media]: { link: headerMedia } }] });
 	} else if (Object.keys(header).length) {
@@ -185,13 +237,21 @@ export function buildComponentsFromValues(values: IDataObject): IDataObject[] {
 	if (Object.keys(body).length) out.push({ type: 'body', parameters: textParams(body) });
 
 	const ordered = [...buttons.entries()].sort((a, b) => Number(a[0]) - Number(b[0]));
-	for (const [index, slots] of ordered) {
+	for (const [index, { subType, slots }] of ordered) {
+		let parameters: IDataObject[];
+		if (subType === 'quick_reply') {
+			parameters = [{ type: 'payload', payload: slots.payload }];
+		} else if (subType === 'copy_code') {
+			parameters = [{ type: 'coupon_code', coupon_code: slots.coupon }];
+		} else {
+			parameters = textParams(slots);
+		}
 		out.push({
 			type: 'button',
-			sub_type: 'url',
+			sub_type: subType || 'url',
 			// Meta indexes buttons as a string, by position in the template.
 			index: String(index),
-			parameters: textParams(slots),
+			parameters,
 		});
 	}
 
