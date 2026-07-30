@@ -3,6 +3,7 @@ import type {
 	ICredentialTestRequest,
 	ICredentialType,
 	INodeProperties,
+	Icon,
 } from 'n8n-workflow';
 
 /**
@@ -18,6 +19,8 @@ export class WacrApi implements ICredentialType {
 
 	displayName = 'WA.cr API';
 
+	icon: Icon = { light: 'file:wacrIcon.svg', dark: 'file:wacrIcon.dark.svg' };
+
 	documentationUrl = 'https://api.wa.cr/docs';
 
 	properties: INodeProperties[] = [
@@ -26,8 +29,8 @@ export class WacrApi implements ICredentialType {
 			name: 'environment',
 			type: 'options',
 			options: [
-				{ name: 'Production (Api.wa.cr)', value: 'production' },
-				{ name: 'Staging (Api.wacart.dev)', value: 'staging' },
+				{ name: 'Production (api.wa.cr)', value: 'production' },
+				{ name: 'Staging (api.wacart.dev)', value: 'staging' },
 				{ name: 'Custom', value: 'custom' },
 			],
 			default: 'production',

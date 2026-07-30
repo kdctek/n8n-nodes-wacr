@@ -28,8 +28,16 @@ All notable changes to this project are documented here. The format follows
   validated as UUIDs; the Note locator is deliberately unvalidated because the API also
   accepts a short ID or E.164 digits.
 
+### Fixed
+
+- Both credentials showed a generic `?` placeholder in the credential dialog. A credential
+  declares its icon separately from the node — `ICredentialType.icon` — so adding it to the
+  node classes was not enough.
+
 ### Changed
 
+- Environment labels read `Production (api.wa.cr)` and `Staging (api.wacart.dev)`; they were
+  Title-cased to `Api.wa.cr`, which misrenders the hostname.
 - Contact → Delete now returns `{ "deleted": true }` so downstream nodes still receive an
   item when the API answers with an empty body.
 - Placeholders across the node now follow n8n's `e.g. ` convention.
