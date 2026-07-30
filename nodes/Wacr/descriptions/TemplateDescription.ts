@@ -36,7 +36,7 @@ export const templateFields: INodeProperties[] = [
 		type: 'string',
 		required: true,
 		default: '',
-		placeholder: 'order_update',
+		placeholder: 'e.g. order_update',
 		description: 'Lowercase letters, digits and underscores only',
 		displayOptions: showFor(['create']),
 	},
@@ -46,7 +46,7 @@ export const templateFields: INodeProperties[] = [
 		type: 'string',
 		required: true,
 		default: 'en',
-		placeholder: 'en_US',
+		placeholder: 'e.g. en_US',
 		displayOptions: showFor(['create']),
 	},
 	{

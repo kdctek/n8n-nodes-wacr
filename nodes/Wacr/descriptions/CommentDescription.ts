@@ -36,7 +36,7 @@ export const commentFields: INodeProperties[] = [
 		type: 'string',
 		required: true,
 		default: '',
-		placeholder: '+919876543210',
+		placeholder: 'e.g. +919876543210',
 		description: 'Contact UUID, business short ID, or E.164 digits. Notes are channel-agnostic — they hang off the contact, not a channel.',
 		displayOptions: showFor(['add', 'getAll']),
 	},

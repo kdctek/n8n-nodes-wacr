@@ -1,4 +1,4 @@
-# n8n-nodes-wacr
+# @kdctek/n8n-nodes-wacr
 
 An [n8n](https://n8n.io) community node for **[WA.cr](https://wa.cr)** — send WhatsApp and
 email messages, keep contacts in sync, submit templates, fire broadcasts, upload media and
@@ -9,13 +9,13 @@ drop internal notes on a conversation, all from an n8n workflow.
 
 ## Installation
 
-In n8n, go to **Settings → Community Nodes → Install**, enter `n8n-nodes-wacr` and confirm.
+In n8n, go to **Settings → Community Nodes → Install**, enter `@kdctek/n8n-nodes-wacr` and confirm.
 
 For a self-hosted instance you can install it manually instead:
 
 ```bash
 cd ~/.n8n
-npm install n8n-nodes-wacr
+npm install @kdctek/n8n-nodes-wacr
 ```
 
 Restart n8n and the **WA.cr** node appears in the node panel.
@@ -68,17 +68,66 @@ WhatsApp takes a recipient as E.164 (with or without `+`), WhatsApp ID digits, a
 short ID, or a WA.cr contact UUID, and one of three message types:
 
 - **Text** — plain text. Deliverable only inside an open 24-hour service window.
-- **Template** — an approved template, picked from a live dropdown, plus its language code and
-  an optional Cloud API `components` array for the variables.
+- **Template** — an approved template, picked from a live dropdown, plus its language code.
+  Set **Variable Input** to **Fields** and the node offers exactly the variables that template
+  declares — header, body and URL-button placeholders — read from the template itself. Choose
+  **Raw JSON** to supply the Cloud API `components` array by hand instead.
+- **Interactive** — buttons, menus, links and more, assembled for you from typed fields. See
+  below.
 - **Raw Message Object** — a full Cloud API message object for any type this node does not
-  model (image, document, interactive, location, and so on).
+  model (image, document, location, and so on).
+
+#### Interactive types
+
+Pick an **Interactive Type**, then fill only the fields it needs. Each accepts an optional
+header (text, image, video or document) and footer.
+
+| Type | What the recipient sees |
+| --- | --- |
+| **Reply Buttons** | Up to three tappable buttons. IDs default to the button label. |
+| **List** | A menu of up to ten rows. Rows sharing a **Section Title** are grouped together. |
+| **Call To Action URL** | A button that opens a link, without showing the raw URL. |
+| **Flow** | Launches a published WhatsApp Flow, with an optional screen and payload. |
+| **Location Request** | A prompt to share their location. |
+| **Address** | A delivery-address form. India and Brazil only. |
+| **Product** | One catalogue product. |
+| **Product List** | Several catalogue products, grouped into sections. |
+
+Meta's limits — three buttons, ten list rows — are checked before the request, so you get a
+clear error instead of a rejection from Graph. Product, Product List and Flow need a Meta
+catalogue or a published Flow configured on your WABA.
 
 Email takes an address or a contact UUID, a subject, and an HTML body.
+
+### WA.cr Trigger
+
+Starts a workflow when an Auto Flow **Webhook** step fires.
+
+WA.cr has no webhook-subscription API, so setup is manual and takes a minute:
+
+1. Add the **WA.cr Trigger** node and copy its **Production URL**.
+2. In your WA.cr Auto Flow, add a **Webhook** step and paste that URL in.
+3. On the same step add a header — `x-wacr-secret` by default — and set it to the same
+   **Secret** you enter on the node. Requests that do not match are rejected with 401.
+
+Three limits are worth knowing before you build on it:
+
+- **Your n8n must be reachable over HTTPS on a public hostname.** WA.cr refuses plain HTTP,
+  IP addresses and private or internal names. A self-hosted n8n on `localhost` or behind NAT
+  will never receive events, and n8n's "listen for test event" URL will not work locally.
+- **Delivery is at-most-once.** There is a 10-second timeout and no retries, so an event is
+  lost if n8n is slow or down. Do not use it as the only record of something important.
+- **It fires per flow step, not per account.** The trigger means "this Auto Flow reached this
+  step" — it is not a feed of every inbound message.
+
+Optionally filter to a single **Automation ID**, or ignore events from the Auto Flow test
+runner.
 
 ### Contact
 
 **Create or Update** (upserts on the phone number), **Get**, **Get Many** (search text and tag
-filters), **Update**, **Delete**. Deleting a contact retains their conversation history.
+filters), **Update**, **Delete** (returns `{ "deleted": true }`). Deleting a contact retains
+their conversation history.
 
 Tags are entered comma-separated and sent as an array. Attributes are a JSON object. On
 **Update**, both replace what is stored rather than merging.
@@ -143,7 +192,7 @@ To try it in a local n8n:
 ```bash
 npm run build
 npm link
-cd ~/.n8n/custom && npm link n8n-nodes-wacr
+cd ~/.n8n/custom && npm link @kdctek/n8n-nodes-wacr
 ```
 
 Then restart n8n.

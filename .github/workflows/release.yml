@@ -1,12 +1,25 @@
 name: Release
 
+# Publishes @kdctek/n8n-nodes-wacr to npm.
+#
 # n8n requires that ALL community nodes submitted for verification are published
 # by a GitHub action and carry a provenance statement (rule in force since
 # 2026-05-01). Publishing from a local machine disqualifies the package, so
 # `npm publish` must never be run by hand — tag a release and let this run.
 #
-# Setup, once: create a granular-access npm token scoped to this package under
-# the kdctek account and store it as the NPM_TOKEN repository secret.
+# TWO-PHASE BOOTSTRAP — npm cannot publish a package's FIRST version over OIDC,
+# because trusted publishing can only be configured on a package that already
+# exists.
+#
+#   Phase 1 (first release only): set the NPM_TOKEN repo secret to a granular
+#     access token scoped to this package, owned by npm user `dezinenija` under
+#     the `kdctek` org. This job publishes with --provenance, satisfying n8n.
+#
+#   Phase 2 (every release after): on npmjs.com → package → Settings → Trusted
+#     publishing, add this repo + workflow, and explicitly tick the allowed
+#     action (configs created after 2026-05-20 no longer default to "publish").
+#     Then DELETE the NPM_TOKEN secret. OIDC takes over automatically and
+#     generates provenance on its own — nothing here needs to change.
 #
 # Release: bump the version in package.json, roll CHANGELOG.md, then
 #   git tag v0.1.0 && git push origin v0.1.0
@@ -18,7 +31,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # required for provenance
+  id-token: write # OIDC token for trusted publishing + provenance
 
 jobs:
   publish:
@@ -26,11 +39,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 22 + npm 11: trusted publishing needs npm >= 11.5.1, and Node 22
+      # still ships npm 10.x. package.json `engines` stays at >=20.15 — that is
+      # the floor for n8n hosts consuming the node, not for this build.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@^11
 
       - run: npm ci
 
@@ -54,6 +71,9 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm test
 
+      # --access public is required for a scoped package's first publish.
+      # --provenance is needed while publishing with a token; once trusted
+      # publishing is on, provenance is automatic and the flag is a no-op.
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

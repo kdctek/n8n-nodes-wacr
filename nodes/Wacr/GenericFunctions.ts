@@ -6,8 +6,10 @@ import type {
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
 	JsonObject,
+	ResourceMapperFields,
 } from 'n8n-workflow';
 import { NodeApiError } from 'n8n-workflow';
+import { extractTemplateFields } from './templateVariables';
 
 /**
  * Shared transport for the WA.cr `/v1` developer API.
@@ -185,6 +187,7 @@ interface TemplateRow {
 	name?: string;
 	language?: string;
 	status?: string;
+	components?: unknown;
 }
 
 async function listTemplates(ctx: ILoadOptionsFunctions): Promise<TemplateRow[]> {
@@ -215,4 +218,25 @@ export async function getTemplateNames(this: ILoadOptionsFunctions): Promise<INo
 		options.push({ name, value: name });
 	}
 	return options;
+}
+
+/**
+ * Variable slots for the chosen template, for n8n's resourceMapper.
+ *
+ * Matches on name + language when both are set, because the same template name
+ * exists once per translation and their placeholders can differ.
+ */
+export async function getTemplateVariables(
+	this: ILoadOptionsFunctions,
+): Promise<ResourceMapperFields> {
+	const name = this.getNodeParameter('templateName', '') as string;
+	if (!name) return { fields: [] };
+
+	const language = this.getNodeParameter('languageCode', '') as string;
+	const templates = await listTemplates(this);
+	const match =
+		templates.find((row) => row.name === name && row.language === language) ??
+		templates.find((row) => row.name === name);
+
+	return { fields: extractTemplateFields(match?.components) as ResourceMapperFields['fields'] };
 }

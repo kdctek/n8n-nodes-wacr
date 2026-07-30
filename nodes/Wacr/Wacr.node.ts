@@ -9,6 +9,7 @@ import { NodeOperationError } from 'n8n-workflow';
 
 import {
 	getTemplateNames,
+	getTemplateVariables,
 	getTemplates,
 	parseJsonArrayParameter,
 	parseJsonParameter,
@@ -19,15 +20,18 @@ import {
 import { broadcastFields, broadcastOperations } from './descriptions/BroadcastDescription';
 import { commentFields, commentOperations } from './descriptions/CommentDescription';
 import { contactFields, contactOperations } from './descriptions/ContactDescription';
+import { interactiveFields } from './descriptions/InteractiveDescription';
 import { mediaFields, mediaOperations } from './descriptions/MediaDescription';
 import { messageFields, messageOperations } from './descriptions/MessageDescription';
 import { templateFields, templateOperations } from './descriptions/TemplateDescription';
+import { buildInteractiveMessage } from './interactive';
+import { buildComponentsFromValues } from './templateVariables';
 
 export class Wacr implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'WA.cr',
 		name: 'wacr',
-		icon: 'file:wacr.svg',
+		icon: { light: 'file:wacrIcon.svg', dark: 'file:wacrIcon.dark.svg' },
 		group: ['output'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
@@ -76,6 +80,7 @@ export class Wacr implements INodeType {
 			},
 			...messageOperations,
 			...messageFields,
+			...interactiveFields,
 			...contactOperations,
 			...contactFields,
 			...commentOperations,
@@ -91,6 +96,7 @@ export class Wacr implements INodeType {
 
 	methods = {
 		loadOptions: { getTemplates, getTemplateNames },
+		resourceMapping: { getTemplateVariables },
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
@@ -163,13 +169,22 @@ async function sendMessage(this: IExecuteFunctions, i: number): Promise<IDataObj
 	const messageType = this.getNodeParameter('messageType', i) as string;
 	if (messageType === 'text') {
 		body.text = this.getNodeParameter('text', i) as string;
+	} else if (messageType === 'interactive') {
+		body.message = buildInteractiveMessage.call(this, i);
 	} else if (messageType === 'template') {
 		body.templateName = this.getNodeParameter('templateName', i) as string;
 		body.languageCode = this.getNodeParameter('languageCode', i) as string;
-		const components = parseJsonArrayParameter(
-			this.getNodeParameter('components', i, '[]'),
-			'Components',
-		);
+
+		// Mapped fields are the default; raw JSON stays available for templates the
+		// mapper reads wrongly, and for anything Meta adds before we model it.
+		const variableInput = this.getNodeParameter('variableInput', i, 'mapped') as string;
+		const components =
+			variableInput === 'json'
+				? parseJsonArrayParameter(this.getNodeParameter('components', i, '[]'), 'Components')
+				: buildComponentsFromValues(
+						((this.getNodeParameter('templateVariables', i, {}) as IDataObject).value ??
+							{}) as IDataObject,
+					);
 		if (components.length) body.components = components;
 	} else {
 		body.message = parseJsonParameter(this.getNodeParameter('message', i), 'Message Object');
@@ -235,7 +250,10 @@ async function contactOperation(
 		}
 		case 'delete': {
 			const id = this.getNodeParameter('contactId', i) as string;
-			return [await wacrApiRequest.call(this, 'DELETE', `/v1/contacts/${id}`)];
+			const response = await wacrApiRequest.call(this, 'DELETE', `/v1/contacts/${id}`);
+			// n8n's UX guidelines ask a delete to return { deleted: true }, so the
+			// branch still carries an item when the API answers with an empty body.
+			return [{ deleted: true, ...response }];
 		}
 		default:
 			throw new NodeOperationError(this.getNode(), `Unknown contact operation: ${operation}`, {

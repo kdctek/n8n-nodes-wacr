@@ -42,7 +42,7 @@ export const messageFields: INodeProperties[] = [
 		type: 'string',
 		required: true,
 		default: '',
-		placeholder: '+919876543210',
+		placeholder: 'e.g. +919876543210',
 		description:
 			'Recipient in E.164 (with or without +), WhatsApp ID digits, a business short ID, or a WA.cr contact UUID',
 		displayOptions: showFor({ channel: ['whatsapp'] }),
@@ -53,7 +53,7 @@ export const messageFields: INodeProperties[] = [
 		type: 'string',
 		required: true,
 		default: '',
-		placeholder: 'someone@example.com',
+		placeholder: 'e.g. someone@example.com',
 		description: 'Recipient email address, or a WA.cr contact UUID',
 		displayOptions: showFor({ channel: ['email'] }),
 	},
@@ -73,6 +73,11 @@ export const messageFields: INodeProperties[] = [
 				name: 'Template',
 				value: 'template',
 				description: 'An approved template — the only way to open a new conversation',
+			},
+			{
+				name: 'Interactive',
+				value: 'interactive',
+				description: 'Buttons, lists, call-to-action links, Flows, location, address or products',
 			},
 			{
 				name: 'Raw Message Object',
@@ -110,9 +115,54 @@ export const messageFields: INodeProperties[] = [
 		type: 'string',
 		required: true,
 		default: 'en',
-		placeholder: 'en_US',
+		placeholder: 'e.g. en_US',
 		description: 'Language of the approved template, e.g. en, en_US or hi',
 		displayOptions: showFor({ channel: ['whatsapp'], messageType: ['template'] }),
+	},
+	{
+		displayName: 'Variable Input',
+		name: 'variableInput',
+		type: 'options',
+		options: [
+			{
+				name: 'Fields',
+				value: 'mapped',
+				description: 'Fill in the variables this template declares',
+			},
+			{
+				name: 'Raw JSON',
+				value: 'json',
+				description: 'Supply the Cloud API components array yourself',
+			},
+		],
+		default: 'mapped',
+		description: 'How to bind the template\u2019s header, body and button variables',
+		displayOptions: showFor({ channel: ['whatsapp'], messageType: ['template'] }),
+	},
+	{
+		// Slots come from the chosen template's own `components`, which
+		// GET /v1/templates returns — see getTemplateVariables.
+		displayName: 'Variables',
+		name: 'templateVariables',
+		type: 'resourceMapper',
+		noDataExpression: true,
+		default: { mappingMode: 'defineBelow', value: null },
+		typeOptions: {
+			loadOptionsDependsOn: ['templateName', 'languageCode'],
+			resourceMapper: {
+				resourceMapperMethod: 'getTemplateVariables',
+				mode: 'add',
+				fieldWords: { singular: 'variable', plural: 'variables' },
+				addAllFields: true,
+				multiKeyMatch: false,
+				supportAutoMap: false,
+			},
+		},
+		displayOptions: showFor({
+			channel: ['whatsapp'],
+			messageType: ['template'],
+			variableInput: ['mapped'],
+		}),
 	},
 	{
 		displayName: 'Components',
@@ -121,7 +171,11 @@ export const messageFields: INodeProperties[] = [
 		default: '[]',
 		description:
 			'Cloud API template components array binding header, body and button parameters. Leave empty for a template with no variables.',
-		displayOptions: showFor({ channel: ['whatsapp'], messageType: ['template'] }),
+		displayOptions: showFor({
+			channel: ['whatsapp'],
+			messageType: ['template'],
+			variableInput: ['json'],
+		}),
 	},
 	{
 		displayName: 'Message Object',

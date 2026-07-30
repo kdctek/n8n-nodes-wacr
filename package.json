@@ -1,7 +1,7 @@
 {
-  "name": "n8n-nodes-wacr",
+  "name": "@kdctek/n8n-nodes-wacr",
   "version": "0.1.0",
-  "description": "n8n community node for WA.cr — send WhatsApp and email messages, manage contacts, templates, broadcasts, media and internal conversation notes.",
+  "description": "n8n community node for WA.cr \u2014 send WhatsApp and email messages, manage contacts, templates, broadcasts, media and internal conversation notes.",
   "keywords": [
     "n8n-community-node-package",
     "n8n",
@@ -46,7 +46,8 @@
       "dist/credentials/WacrOAuth2Api.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/Wacr/Wacr.node.js"
+      "dist/nodes/Wacr/Wacr.node.js",
+      "dist/nodes/WacrTrigger/WacrTrigger.node.js"
     ]
   },
   "devDependencies": {

@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Interactive messages** on Message → Send. Choose an Interactive Type and fill typed
+  fields; the node assembles the Cloud API `interactive` object for you. All eight types
+  are covered: Reply Buttons, List, Call To Action URL, Flow, Location Request, Address,
+  Product and Product List — with optional text, image, video or document headers and a
+  footer. Meta's limits (three buttons, ten list rows) fail before the request rather than
+  as an opaque error from Graph.
+- **Template variables as fields.** Picking a template now offers exactly the variable
+  slots it declares — header, body and URL-button placeholders — read from the template's
+  own components. The raw `components` JSON is still available under Variable Input →
+  Raw JSON.
+- **WA.cr Trigger** node. Starts a workflow when an Auto Flow webhook step fires. Setup is
+  manual: copy the node's URL into the Auto Flow's Webhook step and add a matching secret
+  header. Optional filters for Automation ID and test events.
+
+### Changed
+
+- Contact → Delete now returns `{ "deleted": true }` so downstream nodes still receive an
+  item when the API answers with an empty body.
+- Placeholders across the node now follow n8n's `e.g. ` convention.
+- The codex sidecar declared the node as `n8n-nodes-base.wacr`; it now uses the package's
+  own type.
+
 ## [0.1.0] — 2026-07-29
 
 ### Added

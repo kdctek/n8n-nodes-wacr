@@ -72,7 +72,7 @@ export const mediaFields: INodeProperties[] = [
 		type: 'string',
 		required: true,
 		default: '',
-		placeholder: 'https://example.com/brochure.pdf',
+		placeholder: 'e.g. https://example.com/brochure.pdf',
 		displayOptions: { show: { resource: ['media'], operation: ['upload'], source: ['url'] } },
 	},
 	{
