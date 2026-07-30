@@ -1434,3 +1434,196 @@ test('template pickers: only APPROVED rows are listed, labelled by category', as
 		server.close();
 	}
 });
+
+/* ── sender selection (From) ──────────────────────────────────────────────── */
+
+test('send: From is unwrapped from the locator and sent as `from`', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'message',
+			operation: 'send',
+			channel: 'whatsapp',
+			from: { __rl: true, mode: 'list', value: 'chan-1' },
+			to: '919876543210',
+			messageType: 'text',
+			text: 'hi',
+			options: {},
+		},
+	});
+	assert.strictEqual(received[0].body.from, 'chan-1');
+});
+
+test('send: an empty From omits `from` entirely, preserving default routing', async () => {
+	// Omitting the field must reproduce the pre-`from` request byte for byte —
+	// every already-published workflow depends on WA.cr choosing the sender.
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'message',
+			operation: 'send',
+			channel: 'whatsapp',
+			from: { __rl: true, mode: 'list', value: '' },
+			to: '919876543210',
+			messageType: 'text',
+			text: 'hi',
+			options: {},
+		},
+	});
+	assert.ok(!('from' in received[0].body), 'from must not appear when unset');
+});
+
+test('send: email never carries `from` — the API refuses it on that channel', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'message',
+			operation: 'send',
+			channel: 'email',
+			from: { __rl: true, mode: 'list', value: 'chan-1' },
+			to: 'someone@example.com',
+			subject: 'Hi',
+			html: '<p>Hi</p>',
+			options: {},
+		},
+	});
+	assert.ok(!('from' in received[0].body), 'from must not leak onto the email branch');
+});
+
+test('searchChannels: asks the API for connected senders only, and labels them', async () => {
+	const { searchChannels } = require('../dist/nodes/Wacr/GenericFunctions.js');
+	const { server, received, port } = await startServer(() => ({
+		json: {
+			ok: true,
+			channels: [
+				{ id: 'c1', name: 'Support', displayPhone: '+911111111111', isDefault: true, status: 'connected' },
+				{ id: 'c2', name: null, verifiedName: 'KDC', displayPhone: '+912222222222', isDefault: false, status: 'connected' },
+			],
+		},
+	}));
+	try {
+		const ctx = makeContext({ port, params: {} });
+		const loadCtx = { ...ctx, getNodeParameter: (n, f, o) => ctx.getNodeParameter(n, 0, f, o) };
+		const result = await searchChannels.call(loadCtx);
+
+		assert.strictEqual(received[0].path, '/v1/channels');
+		// Only `connected` senders can be named as `from`; anything else is a
+		// guaranteed 422, so the filter is pushed to the API rather than done here.
+		assert.strictEqual(received[0].query.status, 'connected');
+		assert.deepStrictEqual(result.results, [
+			{ name: 'Support (+911111111111) · Default', value: 'c1' },
+			{ name: 'KDC (+912222222222)', value: 'c2' },
+		]);
+	} finally {
+		server.close();
+	}
+});
+
+test('template pickers: a chosen sender scopes templates to its WABA', async () => {
+	const { searchTemplateNames } = require('../dist/nodes/Wacr/GenericFunctions.js');
+	const { server, received, port } = await startServer((entry) =>
+		entry.path === '/v1/channels'
+			? { json: { ok: true, channels: [{ id: 'c1', wabaId: 'waba-9', status: 'connected' }] } }
+			: { json: { ok: true, templates: [{ id: 't1', name: 'only_this', language: 'en', status: 'APPROVED' }] } },
+	);
+	try {
+		const ctx = makeContext({
+			port,
+			params: { from: { __rl: true, mode: 'list', value: 'c1' } },
+		});
+		const loadCtx = { ...ctx, getNodeParameter: (n, f, o) => ctx.getNodeParameter(n, 0, f, o) };
+		const result = await searchTemplateNames.call(loadCtx);
+
+		// The channel id is resolved to the WABA that owns it, then pushed to the
+		// templates endpoint as a server-side filter.
+		const templates = received.find((r) => r.path === '/v1/templates');
+		assert.strictEqual(templates.query.wabaId, 'waba-9');
+		assert.deepStrictEqual(result.results, [{ name: 'only_this', value: 'only_this' }]);
+	} finally {
+		server.close();
+	}
+});
+
+test('template pickers: a WABA ID given directly as From is used as the filter', async () => {
+	const { searchTemplateNames } = require('../dist/nodes/Wacr/GenericFunctions.js');
+	const { server, received, port } = await startServer((entry) =>
+		entry.path === '/v1/channels'
+			? { json: { ok: true, channels: [{ id: 'c1', wabaId: 'waba-9', status: 'connected' }] } }
+			: { json: { ok: true, templates: [] } },
+	);
+	try {
+		// POST /v1/messages accepts a WABA id as `from` as well as a channel id,
+		// so By ID mode must tolerate both.
+		const ctx = makeContext({ port, params: { from: { __rl: true, mode: 'id', value: 'waba-9' } } });
+		const loadCtx = { ...ctx, getNodeParameter: (n, f, o) => ctx.getNodeParameter(n, 0, f, o) };
+		await searchTemplateNames.call(loadCtx);
+
+		assert.strictEqual(received.find((r) => r.path === '/v1/templates').query.wabaId, 'waba-9');
+	} finally {
+		server.close();
+	}
+});
+
+test('template pickers: no sender means no channels lookup and no filter', async () => {
+	const { searchTemplateNames } = require('../dist/nodes/Wacr/GenericFunctions.js');
+	const { server, received, port } = await startServer(() => ({
+		json: { ok: true, templates: [{ id: 't1', name: 'any', language: 'en', status: 'APPROVED' }] },
+	}));
+	try {
+		const ctx = makeContext({ port, params: {} });
+		const loadCtx = { ...ctx, getNodeParameter: (n, f, o) => ctx.getNodeParameter(n, 0, f, o) };
+		await searchTemplateNames.call(loadCtx);
+
+		// Broadcasts have no From field at all — they must not pay for a lookup.
+		assert.ok(!received.some((r) => r.path === '/v1/channels'), 'must not call /v1/channels');
+		assert.deepStrictEqual(received[0].query, {});
+	} finally {
+		server.close();
+	}
+});
+
+test('template pickers: an unknown sender lists everything rather than nothing', async () => {
+	const { searchTemplateNames } = require('../dist/nodes/Wacr/GenericFunctions.js');
+	const { server, received, port } = await startServer((entry) =>
+		entry.path === '/v1/channels'
+			? { json: { ok: true, channels: [{ id: 'c1', wabaId: 'waba-9', status: 'connected' }] } }
+			: { json: { ok: true, templates: [{ id: 't1', name: 'any', language: 'en', status: 'APPROVED' }] } },
+	);
+	try {
+		const ctx = makeContext({ port, params: { from: { __rl: true, mode: 'id', value: 'nonsense' } } });
+		const loadCtx = { ...ctx, getNodeParameter: (n, f, o) => ctx.getNodeParameter(n, 0, f, o) };
+		const result = await searchTemplateNames.call(loadCtx);
+
+		// An empty dropdown explains nothing. Listing everything lets the send
+		// itself return `unknown_sender`, which names the actual problem.
+		assert.strictEqual(received.find((r) => r.path === '/v1/templates').query.wabaId, undefined);
+		assert.deepStrictEqual(result.results, [{ name: 'any', value: 'any' }]);
+	} finally {
+		server.close();
+	}
+});
+
+test('template pickers: a 403 on channels degrades to an unfiltered list', async () => {
+	// Regression: `channels:read` is newer than the rest of the API, so keys
+	// minted earlier 403 on /v1/channels. Caught live — before this, an older key
+	// plus a typed-in From broke the template dropdown entirely.
+	const { searchTemplateNames } = require('../dist/nodes/Wacr/GenericFunctions.js');
+	const { server, received, port } = await startServer((entry) =>
+		entry.path === '/v1/channels'
+			? {
+					status: 403,
+					json: { ok: false, error: { code: 'insufficient_scope', message: 'missing channels:read' } },
+				}
+			: { json: { ok: true, templates: [{ id: 't1', name: 'any', language: 'en', status: 'APPROVED' }] } },
+	);
+	try {
+		const ctx = makeContext({ port, params: { from: { __rl: true, mode: 'id', value: 'waba-9' } } });
+		const loadCtx = { ...ctx, getNodeParameter: (n, f, o) => ctx.getNodeParameter(n, 0, f, o) };
+		const result = await searchTemplateNames.call(loadCtx);
+
+		assert.strictEqual(received.find((r) => r.path === '/v1/templates').query.wabaId, undefined);
+		assert.deepStrictEqual(result.results, [{ name: 'any', value: 'any' }]);
+	} finally {
+		server.close();
+	}
+});

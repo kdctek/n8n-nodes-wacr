@@ -87,6 +87,44 @@ export function contactOrPhoneLocator(options: LocatorOptions): INodeProperties 
 	};
 }
 
+/**
+ * Sender ("From") picker.
+ *
+ * Deliberately **not** `required`: omitting it preserves WA.cr's historical
+ * routing exactly — reply on the channel the conversation arrived on, else the
+ * workspace default, else the first verified sender. Most workspaces own one
+ * number and should never have to think about this field.
+ *
+ * By ID is unvalidated because the API accepts either a channel id or a WABA id
+ * here, and a UUID regex would reject the WABA id it documents as valid.
+ */
+export function senderLocator(options: LocatorOptions): INodeProperties {
+	return {
+		displayName: options.displayName,
+		name: options.name,
+		type: 'resourceLocator',
+		default: { mode: 'list', value: '' },
+		description: options.description,
+		displayOptions: options.displayOptions,
+		modes: [
+			{
+				displayName: 'From List',
+				name: 'list',
+				type: 'list',
+				typeOptions: { searchListMethod: 'searchChannels', searchable: true },
+			},
+			{
+				displayName: 'By ID',
+				name: 'id',
+				type: 'string',
+				placeholder: 'e.g. a channel ID or a WABA ID',
+				// No validation: the API accepts a channel id OR a WABA id here, and
+				// a UUID regex would reject the WABA id it documents as valid.
+			},
+		],
+	};
+}
+
 /** Template picker. `searchMethod` decides whether the value is a UUID or a name. */
 export function templateLocator(
 	options: LocatorOptions & { searchMethod: string; placeholder: string },

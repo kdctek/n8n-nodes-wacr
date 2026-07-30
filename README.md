@@ -47,6 +47,7 @@ it was not granted fails the token request.
 | Operation | Scope |
 | --- | --- |
 | Message → Send | `messages:send` |
+| Message → Send, **From** picker | `channels:read` |
 | Contact → Get, Get Many | `contacts:read` |
 | Contact → Create or Update, Update, Delete | `contacts:write` |
 | Note → Get Many | `comments:read` |
@@ -76,6 +77,27 @@ short ID, or a WA.cr contact UUID, and one of three message types:
   below.
 - **Raw Message Object** — a full Cloud API message object for any type this node does not
   model (image, document, location, and so on).
+
+#### Choosing which number to send from
+
+A workspace can own several WhatsApp numbers. **From** picks which one sends; leaving it
+empty keeps WA.cr's own routing — reply on the number the conversation arrived on, else the
+workspace default. Most workspaces own one number and can ignore the field entirely.
+
+It matters for templates. A template belongs to exactly one WhatsApp Business Account and
+can only be sent from a number on that WABA, so a workspace with two WABAs has two disjoint
+template lists. Setting **From** narrows the template picker to the templates that sender can
+actually send, which is the difference between a dropdown you can trust and one where some
+entries fail at send time.
+
+The picker lists only **connected** senders, because those are exactly the ones the API
+accepts — naming a disabled, pending or offboarded number is refused rather than quietly
+redirected to a different business identity. **By ID** accepts either a channel ID or a WABA
+ID.
+
+The picker needs the `channels:read` scope. On a key issued before that scope existed the
+dropdown will report it is missing; everything else keeps working, and the template picker
+falls back to listing all templates rather than failing.
 
 #### Interactive types
 

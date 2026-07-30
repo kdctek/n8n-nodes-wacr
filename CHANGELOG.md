@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **From — choose which number sends.** Message → Send gains an optional **From** resource
+  locator listing the workspace's connected WhatsApp senders. Leaving it empty preserves
+  WA.cr's existing routing exactly, so nothing changes for a single-number workspace.
+  Setting it also narrows the template picker, language list and variable slots to the
+  WhatsApp Business Account that owns the chosen sender — templates belong to one WABA and
+  cannot be sent from a number on another, so an unfiltered list could offer sends that were
+  guaranteed to fail. Requires the `channels:read` scope; without it the picker says so and
+  the template picker falls back to listing everything rather than breaking.
+
 - **Interactive messages** on Message → Send. Choose an Interactive Type and fill typed
   fields; the node assembles the Cloud API `interactive` object for you. All eight types
   are covered: Reply Buttons, List, Call To Action URL, Flow, Location Request, Address,

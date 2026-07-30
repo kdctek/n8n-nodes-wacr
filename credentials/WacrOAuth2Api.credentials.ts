@@ -65,7 +65,7 @@ export class WacrOAuth2Api implements ICredentialType {
 			name: 'scope',
 			type: 'string',
 			default:
-				'contacts:read contacts:write messages:send templates:read templates:write broadcasts:read broadcasts:write media:read media:write comments:read comments:write',
+				'channels:read contacts:read contacts:write messages:send templates:read templates:write broadcasts:read broadcasts:write media:read media:write comments:read comments:write',
 			description:
 				'Space-separated subset of the scopes granted to this OAuth client. Requesting a scope the client does not hold fails the token request.',
 		},

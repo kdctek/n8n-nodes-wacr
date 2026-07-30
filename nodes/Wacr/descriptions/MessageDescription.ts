@@ -1,6 +1,6 @@
 import type { INodeProperties } from 'n8n-workflow';
 
-import { templateLocator } from './locators';
+import { senderLocator, templateLocator } from './locators';
 
 const showFor = (extra: Record<string, string[]> = {}) => ({
 	show: { resource: ['message'], operation: ['send'], ...extra },
@@ -38,6 +38,13 @@ export const messageFields: INodeProperties[] = [
 		description: 'Transport to send over. Further channels exist in the API but are not yet dispatchable.',
 		displayOptions: showFor(),
 	},
+	senderLocator({
+		displayName: 'From',
+		name: 'from',
+		description:
+			'Which of the workspace’s WhatsApp numbers to send as. Leave empty to let WA.cr choose: it replies on the number the conversation arrived on, else the workspace default. Setting this also narrows the template pickers to that number’s WhatsApp Business Account.',
+		displayOptions: showFor({ channel: ['whatsapp'] }),
+	}),
 	{
 		displayName: 'To',
 		name: 'to',
@@ -134,9 +141,11 @@ export const messageFields: INodeProperties[] = [
 		type: 'options',
 		typeOptions: {
 			loadOptionsMethod: 'getTemplateLanguages',
-			// `.value` matters: templateName is a resourceLocator, and depending on
+			// `.value` matters: both of these are resourceLocators, and depending on
 			// the bare name never fires when the picked value changes.
-			loadOptionsDependsOn: ['templateName.value'],
+			// `from` is here because changing the sender changes which WABA's
+			// templates are visible, and so which translations of a name exist.
+			loadOptionsDependsOn: ['templateName.value', 'from.value'],
 		},
 		required: true,
 		default: 'en',
@@ -174,7 +183,7 @@ export const messageFields: INodeProperties[] = [
 		noDataExpression: true,
 		default: { mappingMode: 'defineBelow', value: null },
 		typeOptions: {
-			loadOptionsDependsOn: ['templateName.value', 'languageCode'],
+			loadOptionsDependsOn: ['templateName.value', 'languageCode', 'from.value'],
 			resourceMapper: {
 				resourceMapperMethod: 'getTemplateVariables',
 				mode: 'add',

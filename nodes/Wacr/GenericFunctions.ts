@@ -205,9 +205,95 @@ const isApproved = (row: TemplateRow): boolean =>
 /** Category is the useful qualifier once status is always APPROVED. */
 const categorySuffix = (row: TemplateRow): string => (row.category ? ` · ${row.category}` : '');
 
+/**
+ * The WABA to scope template lookups to, derived from whichever sender the user
+ * picked in the From field.
+ *
+ * A template belongs to exactly one WhatsApp Business Account and can only be
+ * sent from a sender on that WABA, so a workspace with two WABAs has two
+ * disjoint template lists. Offering all of them would let a user build a send
+ * that can never succeed.
+ *
+ * `from` accepts either a channel id or a WABA id, so both are resolved here.
+ * An unrecognised value returns undefined rather than throwing: the picker then
+ * lists everything, and the send itself reports `unknown_sender` — a real error
+ * from the API beats an empty dropdown with no explanation.
+ */
+async function resolveSenderWabaId(ctx: ILoadOptionsFunctions): Promise<string | undefined> {
+	// Absent on resources that have no From field (broadcasts), where
+	// getNodeParameter falls back to '' and no filtering is wanted anyway.
+	const from = ctx.getNodeParameter('from', '', { extractValue: true }) as string;
+	if (!from) return undefined;
+
+	let channels: IDataObject[];
+	try {
+		const response = await wacrApiRequest.call(ctx, 'GET', '/v1/channels', {}, { limit: 200 });
+		channels = (response.channels as IDataObject[] | undefined) ?? [];
+	} catch {
+		// `channels:read` is newer than the rest of the API, so a key minted before
+		// it exists returns 403 here. Narrowing the template list is a convenience;
+		// breaking every template dropdown over a missing *read* scope is not an
+		// acceptable price for it. The send still carries `from`, and the API still
+		// enforces it, so the only thing lost is the filter.
+		return undefined;
+	}
+
+	const byId = channels.find((channel) => channel.id === from);
+	if (byId) return (byId.wabaId as string | null) ?? undefined;
+
+	return channels.some((channel) => channel.wabaId === from) ? from : undefined;
+}
+
 async function listTemplates(ctx: ILoadOptionsFunctions): Promise<TemplateRow[]> {
-	const response = await wacrApiRequest.call(ctx, 'GET', '/v1/templates');
+	const wabaId = await resolveSenderWabaId(ctx);
+	// Filtered server-side: `?wabaId=` is the same filter GET /v1/channels takes,
+	// so one WABA id asks both endpoints the same question.
+	const qs: IDataObject = wabaId ? { wabaId } : {};
+
+	const response = await wacrApiRequest.call(ctx, 'GET', '/v1/templates', {}, qs);
 	return ((response.templates as TemplateRow[] | undefined) ?? []).filter((row) => Boolean(row.name));
+}
+
+/**
+ * Label a sender for the From picker. The operator's own name for the number is
+ * the most recognisable thing, then Meta's verified business name; the number
+ * itself only ever supplements a name because a workspace may hold several.
+ */
+function channelLabel(channel: IDataObject): string {
+	const name = ((channel.name as string | null) ?? '') || ((channel.verifiedName as string | null) ?? '');
+	const phone = (channel.displayPhone as string | null) ?? '';
+	const base = name && phone ? `${name} (${phone})` : name || phone || (channel.id as string);
+	return channel.isDefault === true ? `${base} · Default` : base;
+}
+
+/**
+ * Sender picker for the From field.
+ *
+ * Only `connected` senders are listed. WA.cr derives that status from the same
+ * conditions its send path applies when it picks a channel, so `connected`
+ * means — and only means — sendable; offering a `disabled` or `pending` sender
+ * would guarantee a 422. Same reasoning as the APPROVED-only template pickers,
+ * and By ID mode stays unfiltered for anything the list omits.
+ */
+export async function searchChannels(
+	this: ILoadOptionsFunctions,
+	filter?: string,
+): Promise<INodeListSearchResult> {
+	const response = await wacrApiRequest.call(
+		this,
+		'GET',
+		'/v1/channels',
+		{},
+		{ limit: 200, status: 'connected' },
+	);
+	const needle = filter?.toLowerCase() ?? '';
+
+	const results: INodeListSearchItems[] = ((response.channels as IDataObject[]) ?? [])
+		.filter((channel) => Boolean(channel.id))
+		.map((channel) => ({ name: channelLabel(channel), value: channel.id as string }))
+		.filter((option) => !needle || option.name.toLowerCase().includes(needle));
+
+	return { results };
 }
 
 /** Template picker keyed by template UUID — what broadcasts take. */

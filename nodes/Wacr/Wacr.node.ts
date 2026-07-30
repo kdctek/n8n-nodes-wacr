@@ -12,6 +12,7 @@ import {
 	getTemplateNames,
 	getTemplateVariables,
 	getTemplates,
+	searchChannels,
 	searchContacts,
 	searchTemplateNames,
 	searchTemplates,
@@ -100,7 +101,7 @@ export class Wacr implements INodeType {
 
 	methods = {
 		loadOptions: { getTemplates, getTemplateNames, getTemplateLanguages },
-		listSearch: { searchContacts, searchTemplates, searchTemplateNames },
+		listSearch: { searchChannels, searchContacts, searchTemplates, searchTemplateNames },
 		resourceMapping: { getTemplateVariables },
 	};
 
@@ -170,6 +171,13 @@ async function sendMessage(this: IExecuteFunctions, i: number): Promise<IDataObj
 		body.html = this.getNodeParameter('html', i) as string;
 		return wacrApiRequest.call(this, 'POST', '/v1/messages', body);
 	}
+
+	// Optional, and WhatsApp-only — the API refuses `from` on other channels
+	// rather than ignoring it, so it is read after the email branch has returned.
+	// Omitting it keeps WA.cr's default routing, which is what a single-number
+	// workspace wants and what every already-published workflow relies on.
+	const from = this.getNodeParameter('from', i, '', { extractValue: true }) as string;
+	if (from) body.from = from;
 
 	const messageType = this.getNodeParameter('messageType', i) as string;
 	if (messageType === 'text') {
