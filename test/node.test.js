@@ -1408,3 +1408,29 @@ test('getTemplateVariables: unwraps the templateName resource locator', async ()
 		server.close();
 	}
 });
+
+test('template pickers: only APPROVED rows are listed, labelled by category', async () => {
+	const { searchTemplateNames, getTemplates } = require('../dist/nodes/Wacr/GenericFunctions.js');
+	const { server, port } = await startServer(() => ({
+		json: {
+			ok: true,
+			templates: [
+				{ id: 't1', name: 'live_one', language: 'en', status: 'APPROVED', category: 'UTILITY' },
+				{ id: 't2', name: 'pending_one', language: 'en', status: 'PENDING', category: 'MARKETING' },
+				{ id: 't3', name: 'rejected_one', language: 'en', status: 'REJECTED', category: 'UTILITY' },
+			],
+		},
+	}));
+	try {
+		const ctx = makeContext({ port, params: {} });
+		const loadCtx = { ...ctx, getNodeParameter: (n, f, o) => ctx.getNodeParameter(n, 0, f, o) };
+
+		const byName = await searchTemplateNames.call(loadCtx);
+		assert.deepStrictEqual(byName.results, [{ name: 'live_one · UTILITY', value: 'live_one' }]);
+
+		const byId = await getTemplates.call(loadCtx);
+		assert.deepStrictEqual(byId, [{ name: 'live_one (en) · UTILITY', value: 't1' }]);
+	} finally {
+		server.close();
+	}
+});

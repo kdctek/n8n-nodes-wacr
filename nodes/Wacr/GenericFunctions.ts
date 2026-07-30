@@ -189,8 +189,21 @@ interface TemplateRow {
 	name?: string;
 	language?: string;
 	status?: string;
+	category?: string;
 	components?: unknown;
 }
+
+/**
+ * Only APPROVED templates can actually be sent — Meta rejects anything else — so
+ * the pickers list nothing but approved rows. Every picker keeps a By ID mode,
+ * which stays unfiltered, so a template awaiting approval is still reachable by
+ * name or expression.
+ */
+const isApproved = (row: TemplateRow): boolean =>
+	(row.status ?? '').toUpperCase() === 'APPROVED';
+
+/** Category is the useful qualifier once status is always APPROVED. */
+const categorySuffix = (row: TemplateRow): string => (row.category ? ` · ${row.category}` : '');
 
 async function listTemplates(ctx: ILoadOptionsFunctions): Promise<TemplateRow[]> {
 	const response = await wacrApiRequest.call(ctx, 'GET', '/v1/templates');
@@ -201,9 +214,9 @@ async function listTemplates(ctx: ILoadOptionsFunctions): Promise<TemplateRow[]>
 export async function getTemplates(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 	const templates = await listTemplates(this);
 	return templates
-		.filter((row) => Boolean(row.id))
+		.filter((row) => Boolean(row.id) && isApproved(row))
 		.map((row) => ({
-			name: `${row.name} (${row.language ?? '—'})${row.status ? ` · ${row.status}` : ''}`,
+			name: `${row.name} (${row.language ?? '—'})${categorySuffix(row)}`,
 			value: row.id as string,
 		}));
 }
@@ -214,10 +227,11 @@ export async function getTemplateNames(this: ILoadOptionsFunctions): Promise<INo
 	const seen = new Set<string>();
 	const options: INodePropertyOptions[] = [];
 	for (const row of templates) {
+		if (!isApproved(row)) continue;
 		const name = row.name as string;
 		if (seen.has(name)) continue;
 		seen.add(name);
-		options.push({ name, value: name });
+		options.push({ name: `${name}${categorySuffix(row)}`, value: name });
 	}
 	return options;
 }
@@ -239,9 +253,12 @@ export async function getTemplateVariables(
 
 	const language = this.getNodeParameter('languageCode', '') as string;
 	const templates = await listTemplates(this);
+	const named = templates.filter((row) => row.name === name);
 	const match =
-		templates.find((row) => row.name === name && row.language === language) ??
-		templates.find((row) => row.name === name);
+		named.find((row) => row.language === language && isApproved(row)) ??
+		named.find((row) => row.language === language) ??
+		named.find(isApproved) ??
+		named[0];
 
 	return { fields: extractTemplateFields(match?.components) as ResourceMapperFields['fields'] };
 }
@@ -288,10 +305,10 @@ export async function searchTemplates(
 	const needle = filter?.toLowerCase() ?? '';
 
 	const results: INodeListSearchItems[] = templates
-		.filter((row) => Boolean(row.id))
+		.filter((row) => Boolean(row.id) && isApproved(row))
 		.filter((row) => !needle || (row.name ?? '').toLowerCase().includes(needle))
 		.map((row) => ({
-			name: `${row.name} (${row.language ?? '—'})${row.status ? ` · ${row.status}` : ''}`,
+			name: `${row.name} (${row.language ?? '—'})${categorySuffix(row)}`,
 			value: row.id as string,
 		}));
 
@@ -312,11 +329,12 @@ export async function searchTemplateNames(
 	const results: INodeListSearchItems[] = [];
 
 	for (const row of templates) {
+		if (!isApproved(row)) continue;
 		const name = row.name as string;
 		if (seen.has(name)) continue;
 		if (needle && !name.toLowerCase().includes(needle)) continue;
 		seen.add(name);
-		results.push({ name, value: name });
+		results.push({ name: `${name}${categorySuffix(row)}`, value: name });
 	}
 
 	return { results };
@@ -335,7 +353,9 @@ export async function getTemplateLanguages(
 	const name = this.getNodeParameter('templateName', '', { extractValue: true }) as string;
 	const templates = await listTemplates(this);
 
-	const matches = name ? templates.filter((row) => row.name === name) : templates;
+	const matches = (name ? templates.filter((row) => row.name === name) : templates).filter(
+		isApproved,
+	);
 	const seen = new Set<string>();
 	const options: INodePropertyOptions[] = [];
 
@@ -343,10 +363,7 @@ export async function getTemplateLanguages(
 		const language = row.language;
 		if (!language || seen.has(language)) continue;
 		seen.add(language);
-		options.push({
-			name: row.status ? `${language} · ${row.status}` : language,
-			value: language,
-		});
+		options.push({ name: `${language}${categorySuffix(row)}`, value: language });
 	}
 
 	return options.sort((a, b) => String(a.value).localeCompare(String(b.value)));
