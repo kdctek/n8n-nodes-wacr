@@ -73,8 +73,31 @@ export const contactFields: INodeProperties[] = [
 				default: '{}',
 				description: 'Custom attributes as a JSON object',
 			},
-			{ displayName: 'Display Name', name: 'displayName', type: 'string', default: '' },
+			{
+				displayName: 'Display Name',
+				name: 'displayName',
+				type: 'string',
+				default: '',
+				description:
+					'An explicit label for the inbox. Leave it empty and the label mirrors the first and last name.',
+			},
 			{ displayName: 'Email', name: 'email', type: 'string', placeholder: 'e.g. name@email.com', default: '' },
+			{
+				displayName: 'First Name',
+				name: 'firstName',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. Asha',
+				description: 'Given name. The inbox label is built from this and the last name.',
+			},
+			{
+				displayName: 'Last Name',
+				name: 'lastName',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. Menon',
+				description: 'Family name. The inbox label is built from this and the first name.',
+			},
 			{
 				displayName: 'Tags',
 				name: 'tags',
@@ -102,8 +125,33 @@ export const contactFields: INodeProperties[] = [
 				default: '{}',
 				description: 'Custom attributes as a JSON object. Replaces the existing attributes.',
 			},
-			{ displayName: 'Display Name', name: 'displayName', type: 'string', default: '' },
+			{
+				displayName: 'Display Name',
+				name: 'displayName',
+				type: 'string',
+				default: '',
+				description:
+					'An explicit label for the inbox. Setting it stops the label mirroring the first and last name.',
+			},
 			{ displayName: 'Email', name: 'email', type: 'string', placeholder: 'e.g. name@email.com', default: '' },
+			{
+				displayName: 'First Name',
+				name: 'firstName',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. Asha',
+				description:
+					'Given name. Changing it refreshes the inbox label, unless an explicit display name was set.',
+			},
+			{
+				displayName: 'Last Name',
+				name: 'lastName',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. Menon',
+				description:
+					'Family name. Changing it refreshes the inbox label, unless an explicit display name was set.',
+			},
 			{
 				displayName: 'Opted Out',
 				name: 'optedOut',

@@ -244,6 +244,63 @@ export const messageFields: INodeProperties[] = [
 
 	/* ── shared ───────────────────────────────────────────────────────────── */
 	{
+		// Details about the RECIPIENT, not the sender. Messaging someone the
+		// workspace has never spoken to creates their contact, and these name it
+		// in the same call instead of a second round-trip to /v1/contacts. They
+		// never change the message itself.
+		displayName: 'Contact Details',
+		name: 'contactDetails',
+		type: 'collection',
+		placeholder: 'Add detail',
+		default: {},
+		description:
+			'Details to store on the recipient’s contact. Messaging someone new creates their contact record, and these name it in the same call.',
+		displayOptions: showFor(),
+		options: [
+			{
+				displayName: 'Display Name',
+				name: 'displayName',
+				type: 'string',
+				default: '',
+				description:
+					'An explicit label for the inbox, such as “Asha M. (VIP)”. Leave it empty and the label mirrors the first and last name. A label typed into WA.cr by hand is never overwritten.',
+			},
+			{
+				displayName: 'Email',
+				name: 'email',
+				type: 'string',
+				placeholder: 'e.g. name@email.com',
+				default: '',
+				description:
+					'Email address to store on the contact. On the Email channel this has to be the same address as To — the API refuses a different one rather than picking a winner.',
+			},
+			{
+				displayName: 'First Name',
+				name: 'firstName',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. Asha',
+				description: 'Given name. The inbox label is built from this and the last name.',
+			},
+			{
+				displayName: 'Last Name',
+				name: 'lastName',
+				type: 'string',
+				default: '',
+				placeholder: 'e.g. Menon',
+				description: 'Family name. The inbox label is built from this and the first name.',
+			},
+			{
+				displayName: 'Replace Existing Details',
+				name: 'override',
+				type: 'boolean',
+				default: false,
+				description:
+					'Whether to overwrite details the contact already has. Off, a detail they are missing is still filled in and one they already carry is left alone. On a brand-new contact everything is empty, so this makes no difference.',
+			},
+		],
+	},
+	{
 		displayName: 'Options',
 		name: 'options',
 		type: 'collection',

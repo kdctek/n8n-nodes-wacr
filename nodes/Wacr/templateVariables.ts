@@ -52,13 +52,74 @@ function placeholders(text: string): Placeholder[] {
 const asArray = (v: unknown): IDataObject[] => (Array.isArray(v) ? (v as IDataObject[]) : []);
 
 /**
+ * How much of the surrounding sentence to keep on each side of a placeholder.
+ * n8n's resourceMapper has no description or hint field — `displayName` is the
+ * only text it renders — so the label carries the context and has to stay short
+ * enough not to wrap into a wall of text.
+ */
+const CONTEXT_CHARS = 26;
+
+/** Last `CONTEXT_CHARS`, cut at a word boundary, marked as truncated. */
+function tail(text: string): string {
+	if (text.length <= CONTEXT_CHARS) return text;
+	const cut = text.slice(-CONTEXT_CHARS);
+	const space = cut.indexOf(' ');
+	return `…${space === -1 ? cut : cut.slice(space + 1)}`;
+}
+
+/** First `CONTEXT_CHARS`, cut at a word boundary, marked as truncated. */
+function head(text: string): string {
+	if (text.length <= CONTEXT_CHARS) return text;
+	const cut = text.slice(0, CONTEXT_CHARS);
+	const space = cut.lastIndexOf(' ');
+	return `${space === -1 ? cut : cut.slice(0, space)}…`;
+}
+
+/**
+ * The template text either side of a placeholder — "…session {{1}} has been
+ * paused…" — so the operator can see what the value is FOR.
+ *
+ * "Body 2" says where a value goes, not what it means, and a template's own
+ * wording is the only thing that does. Meta's own approval UI reads the same
+ * way. This is derived here rather than fetched: `GET /v1/templates` already
+ * returns each component's full text, which is what the slots are parsed from
+ * in the first place, so there is nothing extra to ask the API for.
+ *
+ * Returns '' when there is no usable context, and the caller keeps the bare
+ * name — a label is better plain than padded with quotes around nothing.
+ */
+function contextFor(text: string, key: string): string {
+	// Newlines and runs of spaces are layout, not meaning, and would break a
+	// single-line label.
+	const source = text.replace(/\s+/g, ' ').trim();
+	if (!source) return '';
+
+	const match = [...source.matchAll(PLACEHOLDER)].find((m) => m[1] === key);
+	if (!match || match.index === undefined) return '';
+
+	const before = tail(source.slice(0, match.index));
+	const after = head(source.slice(match.index + match[0].length));
+	// Nothing either side means the whole component IS the placeholder; the
+	// slot's own name already says that.
+	if (!before.trim() && !after.trim()) return '';
+	return `${before}${match[0]}${after}`;
+}
+
+/**
  * A template placeholder must be filled or Meta rejects the send, so slots
  * default to required. Location `name` and `address` are the exception — Meta
  * treats those as optional decoration on the coordinates.
  */
-const field = (id: string, displayName: string, required = true): TemplateField => ({
+const field = (
+	id: string,
+	displayName: string,
+	required = true,
+	context = '',
+): TemplateField => ({
 	id,
-	displayName,
+	// The quotes matter: they mark the tail as the template's own wording rather
+	// than instructions from the node.
+	displayName: context ? `${displayName} — “${context}”` : displayName,
 	required,
 	defaultMatch: false,
 	display: true,
@@ -81,8 +142,9 @@ export function extractTemplateFields(components: unknown): TemplateField[] {
 		if (kind === 'HEADER') {
 			const format = String(component.format ?? 'TEXT').toUpperCase();
 			if (format === 'TEXT') {
-				for (const p of placeholders(String(component.text ?? ''))) {
-					fields.push(field(`header_${p.key}`, `Header ${p.key}`));
+				const text = String(component.text ?? '');
+				for (const p of placeholders(text)) {
+					fields.push(field(`header_${p.key}`, `Header ${p.key}`, true, contextFor(text, p.key)));
 				}
 			} else if (format === 'LOCATION') {
 				// A location header is four values, not a link. Meta names the label
@@ -103,8 +165,9 @@ export function extractTemplateFields(components: unknown): TemplateField[] {
 		}
 
 		if (kind === 'BODY') {
-			for (const p of placeholders(String(component.text ?? ''))) {
-				fields.push(field(`body_${p.key}`, `Body ${p.key}`));
+			const text = String(component.text ?? '');
+			for (const p of placeholders(text)) {
+				fields.push(field(`body_${p.key}`, `Body ${p.key}`, true, contextFor(text, p.key)));
 			}
 			continue;
 		}
@@ -119,8 +182,13 @@ export function extractTemplateFields(components: unknown): TemplateField[] {
 				const label = button.text ? String(button.text) : `Button ${index + 1}`;
 
 				if (buttonType === 'URL') {
-					for (const p of placeholders(String(button.url ?? ''))) {
-						fields.push(field(`button_${index}_url_${p.key}`, `${label} URL`));
+					const url = String(button.url ?? '');
+					for (const p of placeholders(url)) {
+						// A URL's context is the URL itself — which part of the path or
+						// query the value fills in.
+						fields.push(
+							field(`button_${index}_url_${p.key}`, `${label} URL`, true, contextFor(url, p.key)),
+						);
 					}
 					return;
 				}

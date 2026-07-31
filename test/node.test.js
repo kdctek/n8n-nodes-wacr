@@ -222,6 +222,86 @@ test('message: email send carries subject and html', async () => {
 	});
 });
 
+test('message: contact details ride along with the send', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'message',
+			operation: 'send',
+			channel: 'whatsapp',
+			to: '+919876543210',
+			messageType: 'text',
+			text: 'Hello',
+			options: {},
+			contactDetails: {
+				firstName: ' Asha ',
+				lastName: 'Menon',
+				displayName: 'Asha M. (VIP)',
+				email: 'asha@example.com',
+				override: true,
+			},
+		},
+	});
+
+	assert.deepStrictEqual(received[0].body, {
+		channel: 'whatsapp',
+		to: '+919876543210',
+		firstName: 'Asha',
+		lastName: 'Menon',
+		displayName: 'Asha M. (VIP)',
+		email: 'asha@example.com',
+		override: true,
+		text: 'Hello',
+	});
+});
+
+test('message: blank contact details are dropped, and override alone is not sent', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'message',
+			operation: 'send',
+			channel: 'whatsapp',
+			to: '+919876543210',
+			messageType: 'text',
+			text: 'Hello',
+			options: {},
+			// Whitespace is "not provided", and `override` only widens what an
+			// accompanying detail may replace — on its own it means nothing.
+			contactDetails: { firstName: '   ', displayName: '', override: true },
+		},
+	});
+
+	assert.deepStrictEqual(received[0].body, {
+		channel: 'whatsapp',
+		to: '+919876543210',
+		text: 'Hello',
+	});
+});
+
+test('message: contact details apply on the email channel too', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'message',
+			operation: 'send',
+			channel: 'email',
+			to: 'sam@example.com',
+			subject: 'Your order',
+			html: '<p>Shipped</p>',
+			contactDetails: { firstName: 'Sam' },
+		},
+	});
+
+	assert.deepStrictEqual(received[0].body, {
+		channel: 'email',
+		to: 'sam@example.com',
+		firstName: 'Sam',
+		subject: 'Your order',
+		html: '<p>Shipped</p>',
+	});
+});
+
 /* ── interactive messages ─────────────────────────────────────────────────── */
 
 /** Every interactive test sends the same envelope; only `message` differs. */
@@ -655,6 +735,39 @@ test('contact: upsert splits tags and parses attributes', async () => {
 	});
 });
 
+test('contact: upsert carries first and last name', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'upsert',
+			phoneE164: '+919876543210',
+			fields: { firstName: 'Asha', lastName: 'Menon' },
+		},
+	});
+
+	assert.deepStrictEqual(received[0].body, {
+		firstName: 'Asha',
+		lastName: 'Menon',
+		phoneE164: '+919876543210',
+	});
+});
+
+test('contact: update sends only the name fields that were filled in', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'update',
+			contactId: 'c1',
+			updateFields: { firstName: 'Asha', lastName: '', displayName: 'Asha M. (VIP)' },
+		},
+	});
+
+	assert.strictEqual(received[0].method, 'PATCH');
+	assert.deepStrictEqual(received[0].body, { firstName: 'Asha', displayName: 'Asha M. (VIP)' });
+});
+
 test('contact: getAll passes filters as query params and unwraps the list', async () => {
 	const { received, rows } = await run({
 		params: {
@@ -1081,6 +1194,45 @@ test('template fields: every placeholder becomes one mappable slot', () => {
 	assert.deepStrictEqual(
 		extractTemplateFields(richTemplate).map((f) => f.id),
 		['header_1', 'body_1', 'body_2', 'button_0_payload', 'button_1_url_1'],
+	);
+});
+
+test('template fields: each slot is labelled with the template text around it', () => {
+	assert.deepStrictEqual(
+		extractTemplateFields(richTemplate).map((f) => f.displayName),
+		[
+			'Header 1 — “Hi {{1}}”',
+			'Body 1 — “Order {{1}} ships on {{2}}”',
+			'Body 2 — “Order {{1}} ships on {{2}}”',
+			'Stop payload',
+			'Track URL — “https://example.com/{{1}}”',
+		],
+	);
+});
+
+test('template fields: long text is clipped at word boundaries either side', () => {
+	const [first, second] = extractTemplateFields([
+		{
+			type: 'BODY',
+			// Newlines are layout, not meaning — a label has to stay on one line.
+			text: 'The active session\n{{1}} has been paused. Date Time: {{2}}, and it will resume automatically once the system is back.',
+		},
+	]);
+
+	assert.strictEqual(first.displayName, 'Body 1 — “The active session {{1}} has been paused. Date…”');
+	assert.strictEqual(
+		second.displayName,
+		'Body 2 — “…been paused. Date Time: {{2}}, and it will resume…”',
+	);
+});
+
+test('template fields: a placeholder that is the whole component keeps the bare name', () => {
+	// Quotes around nothing explain less than the slot name already does.
+	assert.deepStrictEqual(
+		extractTemplateFields([{ type: 'HEADER', format: 'TEXT', text: '{{1}}' }]).map(
+			(f) => f.displayName,
+		),
+		['Header 1'],
 	);
 });
 

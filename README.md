@@ -71,8 +71,10 @@ short ID, or a WA.cr contact UUID, and one of three message types:
 - **Text** — plain text. Deliverable only inside an open 24-hour service window.
 - **Template** — an approved template, picked from a live dropdown, plus its language code.
   Set **Variable Input** to **Fields** and the node offers exactly the variables that template
-  declares — header, body and URL-button placeholders — read from the template itself. Choose
-  **Raw JSON** to supply the Cloud API `components` array by hand instead.
+  declares — header, body and URL-button placeholders — read from the template itself. Each is
+  labelled with the wording around it, `Body 2 — “…paused. Date Time: {{2}}, and it will…”`, so
+  you can see what the value is for without opening the template. Choose **Raw JSON** to supply
+  the Cloud API `components` array by hand instead.
 - **Interactive** — buttons, menus, links and more, assembled for you from typed fields. See
   below.
 - **Raw Message Object** — a full Cloud API message object for any type this node does not
@@ -120,6 +122,28 @@ clear error instead of a rejection from Graph. Product, Product List and Flow ne
 catalogue or a published Flow configured on your WABA.
 
 Email takes an address or a contact UUID, a subject, and an HTML body.
+
+#### Naming the recipient in the same call
+
+You do not have to create the contact first. Message someone the workspace has never spoken to
+and, once the message is accepted, a contact is created for them automatically — so the
+conversation opens in the inbox as a normal, fully actionable chat. If the send is refused, no
+contact is created.
+
+**Contact Details** names that person in the same call, instead of a second Contact → Create or
+Update node. It applies on both channels and never changes the message itself.
+
+| Field | What it does |
+| --- | --- |
+| **First Name**, **Last Name** | The person's name. The inbox label is built from them. |
+| **Display Name** | An explicit label instead of the built one, e.g. `Asha M. (VIP)`. |
+| **Email** | Their email address, stored on the contact. On the Email channel it has to match **To**, which is the same address — the API refuses a contradiction rather than picking a winner. |
+| **Replace Existing Details** | Whether details they **already** have may be overwritten. |
+
+Leave **Replace Existing Details** off (the default) and anything missing is still filled in;
+only details already on record are left alone. On a brand-new contact every field is empty, so
+everything applies and the toggle makes no difference. A display name someone typed into WA.cr
+by hand is never overwritten — the name fields update beneath it.
 
 #### A successful send is not a delivered message
 
@@ -172,6 +196,12 @@ Note → Contact and to the template pickers on Message and Broadcast.
 
 Tags are entered comma-separated and sent as an array. Attributes are a JSON object. On
 **Update**, both replace what is stored rather than merging.
+
+**First Name** and **Last Name** hold the person's name; **Display Name** is the label the
+inbox shows. Leave the display name empty and it mirrors the first and last name — set it and
+your label wins from then on. **Create or Update** writes the record wholesale, so a field you
+leave empty is cleared on a contact that already exists; **Update** only sends the fields you
+fill in, and so leaves the rest alone.
 
 ### Note
 

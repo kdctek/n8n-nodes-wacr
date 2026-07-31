@@ -174,6 +174,10 @@ async function sendMessage(this: IExecuteFunctions, i: number): Promise<IDataObj
 	const channel = this.getNodeParameter('channel', i) as string;
 	const body: IDataObject = { channel, to: this.getNodeParameter('to', i) as string };
 
+	// Read before the channel branches: unlike `from`, contact details ride along
+	// on every channel.
+	applyContactDetails.call(this, body, i);
+
 	if (channel === 'email') {
 		body.subject = this.getNodeParameter('subject', i) as string;
 		body.html = this.getNodeParameter('html', i) as string;
@@ -217,11 +221,35 @@ async function sendMessage(this: IExecuteFunctions, i: number): Promise<IDataObj
 	return wacrApiRequest.call(this, 'POST', '/v1/messages', body);
 }
 
+/**
+ * Add the optional details a send carries for its recipient. Messaging someone
+ * the workspace has never spoken to creates their contact, and these name it in
+ * the same call rather than in a second request to /v1/contacts.
+ *
+ * Blank entries are dropped rather than sent: the API trims them to "not
+ * provided" anyway, and an empty string in the body reads like an instruction to
+ * clear the field. `override` only widens what an accompanying detail may
+ * replace, so on its own it means nothing and is not sent.
+ */
+function applyContactDetails(this: IExecuteFunctions, body: IDataObject, i: number): void {
+	const details = this.getNodeParameter('contactDetails', i, {}) as IDataObject;
+	let carriesDetail = false;
+	for (const field of ['firstName', 'lastName', 'displayName', 'email'] as const) {
+		const value = ((details[field] as string | undefined) ?? '').trim();
+		if (!value) continue;
+		body[field] = value;
+		carriesDetail = true;
+	}
+	if (carriesDetail && details.override === true) body.override = true;
+}
+
 /* ── contact ──────────────────────────────────────────────────────────────── */
 
 /** Shape the free-text/JSON fields of a contact payload. */
 function contactPayload(this: IExecuteFunctions, fields: IDataObject): IDataObject {
 	const body: IDataObject = {};
+	if (fields.firstName) body.firstName = fields.firstName;
+	if (fields.lastName) body.lastName = fields.lastName;
 	if (fields.displayName) body.displayName = fields.displayName;
 	if (fields.email) body.email = fields.email;
 	if (fields.tags !== undefined) {

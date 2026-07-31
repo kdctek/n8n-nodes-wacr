@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Message → Send** gained a **Contact Details** collection — **First Name**, **Last Name**,
+  **Display Name**, **Email** and **Replace Existing Details**. Messaging someone the workspace
+  has never spoken to creates their contact, and these name it in the same call instead of a
+  second Contact node. They apply on both channels and never change the message itself. Blank
+  entries are dropped, and **Replace Existing Details** is only sent alongside a detail it
+  could act on.
+- **Contact → Create or Update** and **Contact → Update** gained **First Name** and
+  **Last Name**. **Display Name** mirrors the two unless an explicit label is set.
+
+Both rely on fields the WA.cr API added on 2026-07-31. A deployment that predates them ignores
+the fields rather than failing, so nothing breaks — the details simply are not stored.
+
+### Changed
+
+- Template variable slots are now labelled with the template text around them —
+  `Body 2 — “…paused. Date Time: {{2}}, and it will…”` instead of a bare `Body 2`. The wording
+  either side of a placeholder is the only thing that says what a value is *for*. Long text is
+  clipped at a word boundary on each side; a placeholder that is the whole component keeps the
+  bare name. Slot IDs are unchanged, so saved workflows keep their mapped values.
+
 ## [0.2.1] — 2026-07-31
 
 Clears every violation reported by `@n8n/scan-community-package`, which gates submission for
