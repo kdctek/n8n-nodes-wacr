@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-31
+
+_Supersedes 0.1.0, which was deprecated on npm: it was published from a local machine and so
+carries no provenance statement, which n8n's verification guidelines require. Its contents are
+otherwise identical to this release._
+
 ### Added
 
 - **From — choose which number sends.** Message → Send gains an optional **From** resource
@@ -98,5 +104,6 @@ All notable changes to this project are documented here. The format follows
 - WA.cr's error envelope unwrapped into node error messages, with Continue On Fail support.
 - `usableAsTool`, so an AI Agent can call the node directly.
 
-[Unreleased]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kdctek/n8n-nodes-wacr/releases/tag/v0.2.0
 [0.1.0]: https://github.com/kdctek/n8n-nodes-wacr/releases/tag/v0.1.0
