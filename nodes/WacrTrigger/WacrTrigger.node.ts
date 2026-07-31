@@ -1,10 +1,12 @@
 import type {
 	IDataObject,
+	IHookFunctions,
 	INodeType,
 	INodeTypeDescription,
 	IWebhookFunctions,
 	IWebhookResponseData,
 } from 'n8n-workflow';
+import { NodeConnectionTypes } from 'n8n-workflow';
 
 /**
  * Receives WA.cr Auto Flow webhook events.
@@ -41,10 +43,14 @@ export class WacrTrigger implements INodeType {
 		icon: { light: 'file:wacrIcon.svg', dark: 'file:wacrIcon.dark.svg' },
 		group: ['trigger'],
 		version: 1,
+		subtitle: '={{$parameter["options"]["automationId"] || "any Auto Flow"}}',
 		description: 'Starts a workflow when a WA.cr Auto Flow webhook step fires',
 		defaults: { name: 'WA.cr Trigger' },
+		// Required by n8n's community-node rules. A trigger has no execute() and so
+		// cannot actually be invoked as a tool; the type only permits `true`.
+		usableAsTool: true,
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionTypes.Main],
 		webhooks: [
 			{
 				name: 'default',
@@ -106,6 +112,32 @@ export class WacrTrigger implements INodeType {
 				],
 			},
 		],
+	};
+
+	/**
+	 * WA.cr has no webhook-subscription API, so there is nothing for n8n to
+	 * register, verify or tear down remotely — the user pastes this node's URL
+	 * into an Auto Flow webhook step by hand. `checkExists` therefore reports the
+	 * webhook as already present, which is true from n8n's point of view, and
+	 * leaves `create` and `delete` with no work to do.
+	 *
+	 * These are declared only because `@n8n/eslint-plugin-community-nodes`
+	 * requires the full lifecycle on any node that declares `webhooks`; it makes
+	 * no allowance for manually configured triggers. Omitting them changes no
+	 * behaviour — the node receives events either way.
+	 */
+	webhookMethods = {
+		default: {
+			async checkExists(this: IHookFunctions): Promise<boolean> {
+				return true;
+			},
+			async create(this: IHookFunctions): Promise<boolean> {
+				return true;
+			},
+			async delete(this: IHookFunctions): Promise<boolean> {
+				return true;
+			},
+		},
 	};
 
 	async webhook(this: IWebhookFunctions): Promise<IWebhookResponseData> {

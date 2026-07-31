@@ -5,7 +5,7 @@ import type {
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
-import { NodeOperationError } from 'n8n-workflow';
+import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 
 import {
 	getTemplateLanguages,
@@ -43,8 +43,8 @@ export class Wacr implements INodeType {
 		description: 'Send messages and manage contacts, templates, broadcasts and media in WA.cr',
 		defaults: { name: 'WA.cr' },
 		usableAsTool: true,
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionTypes.Main],
+		outputs: [NodeConnectionTypes.Main],
 		credentials: [
 			{
 				name: 'wacrApi',
@@ -125,7 +125,15 @@ export class Wacr implements INodeType {
 					});
 					continue;
 				}
-				throw error;
+				// Errors raised through the API transport or a parameter check already
+				// carry node context and are rethrown as-is. Anything else would surface
+				// as a bare message with no indication of which node produced it, so it
+				// gets wrapped.
+				const failure =
+					error instanceof NodeApiError || error instanceof NodeOperationError
+						? error
+						: new NodeOperationError(this.getNode(), error as Error, { itemIndex: i });
+				throw failure;
 			}
 		}
 
@@ -193,14 +201,14 @@ async function sendMessage(this: IExecuteFunctions, i: number): Promise<IDataObj
 		const variableInput = this.getNodeParameter('variableInput', i, 'mapped') as string;
 		const components =
 			variableInput === 'json'
-				? parseJsonArrayParameter(this.getNodeParameter('components', i, '[]'), 'Components')
+				? parseJsonArrayParameter.call(this, this.getNodeParameter('components', i, '[]'), 'Components')
 				: buildComponentsFromValues(
 						((this.getNodeParameter('templateVariables', i, {}) as IDataObject).value ??
 							{}) as IDataObject,
 					);
 		if (components.length) body.components = components;
 	} else {
-		body.message = parseJsonParameter(this.getNodeParameter('message', i), 'Message Object');
+		body.message = parseJsonParameter.call(this, this.getNodeParameter('message', i), 'Message Object');
 	}
 
 	const options = this.getNodeParameter('options', i, {}) as IDataObject;
@@ -212,7 +220,7 @@ async function sendMessage(this: IExecuteFunctions, i: number): Promise<IDataObj
 /* ── contact ──────────────────────────────────────────────────────────────── */
 
 /** Shape the free-text/JSON fields of a contact payload. */
-function contactPayload(fields: IDataObject): IDataObject {
+function contactPayload(this: IExecuteFunctions, fields: IDataObject): IDataObject {
 	const body: IDataObject = {};
 	if (fields.displayName) body.displayName = fields.displayName;
 	if (fields.email) body.email = fields.email;
@@ -221,7 +229,7 @@ function contactPayload(fields: IDataObject): IDataObject {
 		if (tags.length) body.tags = tags;
 	}
 	if (fields.attributes !== undefined) {
-		body.attributes = parseJsonParameter(fields.attributes, 'Attributes');
+		body.attributes = parseJsonParameter.call(this, fields.attributes, 'Attributes');
 	}
 	if (fields.optedOut !== undefined) body.optedOut = fields.optedOut;
 	return body;
@@ -234,7 +242,7 @@ async function contactOperation(
 ): Promise<IDataObject[]> {
 	switch (operation) {
 		case 'upsert': {
-			const body = contactPayload(this.getNodeParameter('fields', i, {}) as IDataObject);
+			const body = contactPayload.call(this, this.getNodeParameter('fields', i, {}) as IDataObject);
 			body.phoneE164 = this.getNodeParameter('phoneE164', i) as string;
 			return [await wacrApiRequest.call(this, 'POST', '/v1/contacts', body)];
 		}
@@ -253,7 +261,7 @@ async function contactOperation(
 		}
 		case 'update': {
 			const id = this.getNodeParameter('contactId', i, undefined, { extractValue: true }) as string;
-			const body = contactPayload(this.getNodeParameter('updateFields', i, {}) as IDataObject);
+			const body = contactPayload.call(this, this.getNodeParameter('updateFields', i, {}) as IDataObject);
 			if (!Object.keys(body).length) {
 				throw new NodeOperationError(this.getNode(), 'Set at least one field to update.', {
 					itemIndex: i,
@@ -328,7 +336,7 @@ async function templateOperation(
 			name: this.getNodeParameter('name', i) as string,
 			language: this.getNodeParameter('language', i) as string,
 			category: this.getNodeParameter('category', i) as string,
-			components: parseJsonArrayParameter(this.getNodeParameter('components', i), 'Components'),
+			components: parseJsonArrayParameter.call(this, this.getNodeParameter('components', i), 'Components'),
 		};
 		if (options.parameterFormat) body.parameterFormat = options.parameterFormat;
 		if (options.wabaId) body.wabaId = options.wabaId;
@@ -366,7 +374,7 @@ async function broadcastOperation(
 		const body: IDataObject = {
 			name: this.getNodeParameter('name', i) as string,
 			templateId: this.getNodeParameter('templateId', i, undefined, { extractValue: true }) as string,
-			variables: parseJsonParameter(this.getNodeParameter('variables', i, '{}'), 'Variables'),
+			variables: parseJsonParameter.call(this, this.getNodeParameter('variables', i, '{}'), 'Variables'),
 		};
 		if (recipients.groupId) body.groupId = recipients.groupId;
 		if (contactIds.length) body.contactIds = contactIds;

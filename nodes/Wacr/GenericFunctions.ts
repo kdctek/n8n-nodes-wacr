@@ -10,7 +10,7 @@ import type {
 	JsonObject,
 	ResourceMapperFields,
 } from 'n8n-workflow';
-import { NodeApiError } from 'n8n-workflow';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 import { extractTemplateFields } from './templateVariables';
 
 /**
@@ -160,7 +160,11 @@ export function toList(value: string | undefined): string[] {
  * object when the field holds a literal, or as a string when it came from an
  * expression — accept both.
  */
-export function parseJsonParameter(value: unknown, fieldName: string): IDataObject {
+export function parseJsonParameter(
+	this: IExecuteFunctions,
+	value: unknown,
+	fieldName: string,
+): IDataObject {
 	if (value === undefined || value === null || value === '') return {};
 	if (typeof value === 'object') return value as IDataObject;
 	if (typeof value === 'string') {
@@ -168,17 +172,30 @@ export function parseJsonParameter(value: unknown, fieldName: string): IDataObje
 			const parsed = JSON.parse(value);
 			if (parsed && typeof parsed === 'object') return parsed as IDataObject;
 		} catch {
-			throw new Error(`${fieldName} must be valid JSON.`);
+			throw new NodeOperationError(this.getNode(), `${fieldName} must be valid JSON.`);
 		}
 	}
-	throw new Error(`${fieldName} must be a JSON object.`);
+	throw new NodeOperationError(this.getNode(), `${fieldName} must be a JSON object.`);
 }
 
 /** Same as `parseJsonParameter`, for fields that must be a JSON array. */
-export function parseJsonArrayParameter(value: unknown, fieldName: string): IDataObject[] {
+export function parseJsonArrayParameter(
+	this: IExecuteFunctions,
+	value: unknown,
+	fieldName: string,
+): IDataObject[] {
 	if (value === undefined || value === null || value === '') return [];
-	const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-	if (!Array.isArray(parsed)) throw new Error(`${fieldName} must be a JSON array.`);
+	let parsed: unknown = value;
+	if (typeof value === 'string') {
+		try {
+			parsed = JSON.parse(value);
+		} catch {
+			throw new NodeOperationError(this.getNode(), `${fieldName} must be valid JSON.`);
+		}
+	}
+	if (!Array.isArray(parsed)) {
+		throw new NodeOperationError(this.getNode(), `${fieldName} must be a JSON array.`);
+	}
 	return parsed as IDataObject[];
 }
 

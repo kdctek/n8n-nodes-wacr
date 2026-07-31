@@ -46,6 +46,14 @@ module.exports = {
 				'n8n-nodes-base/node-execute-block-missing-continue-on-fail': 'off',
 				'n8n-nodes-base/node-resource-description-filename-against-convention': 'off',
 				'n8n-nodes-base/node-param-fixed-collection-type-unsorted-items': 'off',
+
+				// These two contradict @n8n/eslint-plugin-community-nodes, which
+				// @n8n/scan-community-package runs and which gates verification: this
+				// plugin demands the literal ['main'], the scanner demands
+				// NodeConnectionTypes.Main. Both are n8n's own. The scanner wins,
+				// because it is what decides whether the package can be submitted.
+				'n8n-nodes-base/node-class-description-inputs-wrong-regular-node': 'off',
+				'n8n-nodes-base/node-class-description-outputs-wrong': 'off',
 			},
 		},
 	],
