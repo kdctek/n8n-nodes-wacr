@@ -6,6 +6,31 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-31
+
+Clears every violation reported by `@n8n/scan-community-package`, which gates submission for
+n8n's verified community node programme. No functional change to any operation.
+
+### Changed
+
+- Errors that escape an operation are now always wrapped as `NodeOperationError` unless they
+  already carry node context, so a failure reports which node produced it instead of surfacing
+  a bare message. The JSON parameter parsers raise the same type rather than a plain `Error`.
+- `inputs`/`outputs` use `NodeConnectionTypes.Main` instead of the `['main']` string literal.
+  **This drops support for n8n 1.x**, where that constant does not exist. n8n's own two
+  linters disagree on this point; the verification scanner is the one that decides whether the
+  package can be submitted.
+- The trigger declares `webhookMethods` as three no-ops. WA.cr has no webhook-subscription
+  API, so there is nothing to register or tear down — setup remains manual, and behaviour is
+  unchanged. They exist because the scanner requires the full lifecycle on any node declaring
+  `webhooks`.
+
+### Added
+
+- `LICENSE` file (MIT), matching the licence `package.json` has always declared.
+- The trigger gained a `subtitle` showing the Automation ID filter, or "any Auto Flow" when
+  unset, plus the `usableAsTool` property the scanner requires.
+
 ## [0.2.0] — 2026-07-31
 
 _Supersedes 0.1.0, which was deprecated on npm: it was published from a local machine and so
@@ -104,6 +129,7 @@ otherwise identical to this release._
 - WA.cr's error envelope unwrapped into node error messages, with Continue On Fail support.
 - `usableAsTool`, so an AI Agent can call the node directly.
 
-[Unreleased]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/kdctek/n8n-nodes-wacr/releases/tag/v0.2.0
 [0.1.0]: https://github.com/kdctek/n8n-nodes-wacr/releases/tag/v0.1.0
