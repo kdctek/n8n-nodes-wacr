@@ -11,9 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Node 22, not 20: isolated-vm (via n8n-workflow -> @n8n/expression-runtime)
+      # needs v8::SourceLocation, which Node 20's V8 does not have, so `npm ci`
+      # fails at node-gyp before any of the gate runs. package.json `engines`
+      # stays >=20.15 — that is the floor for n8n hosts, not for this build.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run lint
