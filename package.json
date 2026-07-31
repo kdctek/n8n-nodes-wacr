@@ -1,6 +1,6 @@
 {
   "name": "@kdctek/n8n-nodes-wacr",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "n8n community node for WA.cr \u2014 send WhatsApp and email messages, manage contacts, templates, broadcasts, media and internal conversation notes.",
   "keywords": [
     "n8n-community-node-package",
@@ -15,8 +15,9 @@
   "license": "MIT",
   "homepage": "https://wa.cr",
   "author": {
-    "name": "KDC",
-    "email": "ping@wa.cr"
+    "name": "kdctek",
+    "email": "tek@kdc.co",
+    "url": "https://github.com/kdctek"
   },
   "repository": {
     "type": "git",
