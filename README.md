@@ -147,7 +147,8 @@ by hand is never overwritten — the name fields update beneath it.
 
 #### A successful send is not a delivered message
 
-Two things catch people out, so the node says both in the UI as well:
+Two things catch people out. The node flags the first in the UI, where it is a real trap; the
+second is worth knowing before you build on templates:
 
 - **Everything except Template needs an open 24-hour service window** — within 24 hours of the
   contact's last inbound message. Outside it, WA.cr still *accepts* the message, so **this node

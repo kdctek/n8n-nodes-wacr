@@ -20,6 +20,13 @@ All notable changes to this project are documented here. The format follows
 Both rely on fields the WA.cr API added on 2026-07-31. A deployment that predates them ignores
 the fields rather than failing, so nothing breaks — the details simply are not stored.
 
+### Removed
+
+- The accepted-is-not-delivered notice on **Message Type → Template**. The caveat belongs where
+  the trap is: a non-template send outside the 24-hour window, which the window notice already
+  covers. The template path is the reliable one and no longer opens with a warning. The
+  marketing-limits nuance stays documented in the README.
+
 ### Changed
 
 - Template variable slots are now labelled with the template text around them —

@@ -108,14 +108,6 @@ export const messageFields: INodeProperties[] = [
 		displayOptions: showFor({ channel: ['whatsapp'], messageType: ['text', 'interactive', 'raw'] }),
 	},
 	{
-		displayName:
-			'A successful send means WA.cr <b>accepted</b> the message, not that it was delivered. <b>Marketing</b> templates especially can be dropped by Meta\u2019s per-user marketing limits and quality rules. Confirm delivery in WA.cr rather than assuming it from this node.',
-		name: 'templateNotice',
-		type: 'notice',
-		default: '',
-		displayOptions: showFor({ channel: ['whatsapp'], messageType: ['template'] }),
-	},
-	{
 		displayName: 'Text',
 		name: 'text',
 		type: 'string',

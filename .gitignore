@@ -12,3 +12,6 @@ AGENTS.md
 CLAUDE.md
 MEMORY.md
 UPSTREAM-API-REQUESTS.md
+
+# npm pack artefacts from local install testing
+*.tgz
