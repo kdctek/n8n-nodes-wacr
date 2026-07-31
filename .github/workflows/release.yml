@@ -37,12 +37,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Node 22 + npm 11: trusted publishing needs npm >= 11.5.1, and Node 22
       # still ships npm 10.x. package.json `engines` stays at >=20.15 — that is
       # the floor for n8n hosts consuming the node, not for this build.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
