@@ -27,7 +27,6 @@ n8n's verified community node programme. No functional change to any operation.
 
 ### Added
 
-- `LICENSE` file (MIT), matching the licence `package.json` has always declared.
 - The trigger gained a `subtitle` showing the Automation ID filter, or "any Auto Flow" when
   unset, plus the `usableAsTool` property the scanner requires.
 
