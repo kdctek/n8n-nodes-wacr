@@ -2,7 +2,7 @@
 	"node": "@kdctek/n8n-nodes-wacr.wacrTrigger",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
-	"categories": ["Communication", "Marketing", "Sales"],
+	"categories": ["Communication", "Marketing & Content", "Sales"],
 	"resources": {
 		"credentialDocumentation": [
 			{
