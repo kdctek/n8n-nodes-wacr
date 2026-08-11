@@ -46,9 +46,6 @@ export class WacrTrigger implements INodeType {
 		subtitle: '={{$parameter["options"]["automationId"] || "any Auto Flow"}}',
 		description: 'Starts a workflow when a WA.cr Auto Flow webhook step fires',
 		defaults: { name: 'WA.cr Trigger' },
-		// Required by n8n's community-node rules. A trigger has no execute() and so
-		// cannot actually be invoked as a tool; the type only permits `true`.
-		usableAsTool: true,
 		inputs: [],
 		outputs: [NodeConnectionTypes.Main],
 		webhooks: [
