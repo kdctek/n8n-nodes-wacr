@@ -75,10 +75,13 @@ export class Wacr implements INodeType {
 				noDataExpression: true,
 				options: [
 					{ name: 'Broadcast', value: 'broadcast' },
+					// Displayed as Comment (what the console and the mobile app call it)
+					// while the stored value stays 'comment' — it always was, so nothing
+					// a saved workflow holds changes.
+					{ name: 'Comment', value: 'comment' },
 					{ name: 'Contact', value: 'contact' },
 					{ name: 'Media', value: 'media' },
 					{ name: 'Message', value: 'message' },
-					{ name: 'Note', value: 'comment' },
 					{ name: 'Template', value: 'template' },
 				],
 				default: 'message',
@@ -245,6 +248,36 @@ function applyContactDetails(this: IExecuteFunctions, body: IDataObject, i: numb
 
 /* ── contact ──────────────────────────────────────────────────────────────── */
 
+const E164 = /^\+[1-9]\d{7,14}$/;
+
+/** Address sub-fields that travel verbatim. Blank ones are left out entirely. */
+const ADDRESS_TEXT_FIELDS = [
+	'addressLine1',
+	'addressLine2',
+	'city',
+	'state',
+	'pincode',
+	'country',
+	'name',
+	'mobile',
+	'email',
+	'instruction',
+	'label',
+	'purpose',
+	'digipin',
+] as const;
+
+/** Sub-fields that make an entry an address. Names and numbers alone do not. */
+const ADDRESS_PLACE_FIELDS = [
+	'addressLine1',
+	'addressLine2',
+	'city',
+	'state',
+	'pincode',
+	'label',
+	'digipin',
+] as const;
+
 /** Shape the free-text/JSON fields of a contact payload. */
 function contactPayload(this: IExecuteFunctions, fields: IDataObject): IDataObject {
 	const body: IDataObject = {};
@@ -252,6 +285,9 @@ function contactPayload(this: IExecuteFunctions, fields: IDataObject): IDataObje
 	if (fields.lastName) body.lastName = fields.lastName;
 	if (fields.displayName) body.displayName = fields.displayName;
 	if (fields.email) body.email = fields.email;
+	// Create-only: the API stamps provenance when the contact is born and never
+	// rewrites it, so this field only exists on the POST collection.
+	if (fields.source) body.source = fields.source;
 	if (fields.tags !== undefined) {
 		const tags = toList(fields.tags as string);
 		if (tags.length) body.tags = tags;
@@ -263,6 +299,187 @@ function contactPayload(this: IExecuteFunctions, fields: IDataObject): IDataObje
 	return body;
 }
 
+/**
+ * A coordinate typed as text → a number, or undefined when it was left empty.
+ *
+ * Read as text on purpose: a number field defaults to 0, and 0, 0 is a real
+ * place in the Gulf of Guinea — every address would carry a coordinate nobody
+ * typed, and the API would derive a DIGIPIN from it.
+ */
+function coordinate(
+	this: IExecuteFunctions,
+	raw: unknown,
+	fieldName: string,
+	index: number,
+	itemIndex: number,
+): number | undefined {
+	const value = typeof raw === 'number' ? String(raw) : ((raw as string | undefined) ?? '').trim();
+	if (!value) return undefined;
+	const parsed = Number(value);
+	if (!Number.isFinite(parsed)) {
+		throw new NodeOperationError(
+			this.getNode(),
+			`Address ${index + 1}: ${fieldName} must be a number.`,
+			{ itemIndex },
+		);
+	}
+	return parsed;
+}
+
+/**
+ * The Addresses collection → the API's `addresses[]`.
+ *
+ * Blank sub-fields are dropped rather than sent as empty strings: the stored
+ * list is append-only and a repeat submission is recognised by an entry's
+ * content, so an empty string would make an otherwise identical address look
+ * new and grow the list on every run.
+ */
+function contactAddresses(this: IExecuteFunctions, i: number): IDataObject[] {
+	const collection = this.getNodeParameter('addresses', i, {}) as IDataObject;
+	const entries = (collection.address as IDataObject[] | undefined) ?? [];
+	return entries.map((entry, index) => {
+		const address: IDataObject = {};
+		for (const field of ADDRESS_TEXT_FIELDS) {
+			const value = ((entry[field] as string | undefined) ?? '').trim();
+			if (value) address[field] = value;
+		}
+		const latitude = coordinate.call(this, entry.latitude, 'Latitude', index, i);
+		const longitude = coordinate.call(this, entry.longitude, 'Longitude', index, i);
+		if ((latitude === undefined) !== (longitude === undefined)) {
+			throw new NodeOperationError(
+				this.getNode(),
+				`Address ${index + 1} needs both a latitude and a longitude, or neither.`,
+				{ itemIndex: i },
+			);
+		}
+		if (latitude !== undefined && longitude !== undefined) {
+			address.latitude = latitude;
+			address.longitude = longitude;
+		}
+		const locates =
+			ADDRESS_PLACE_FIELDS.some((field) => address[field] !== undefined) ||
+			address.latitude !== undefined;
+		if (!locates) {
+			throw new NodeOperationError(
+				this.getNode(),
+				`Address ${index + 1} says who but not where. Fill in a line, city, state, pincode, label, DIGIPIN or a pair of coordinates.`,
+				{ itemIndex: i },
+			);
+		}
+		return address;
+	});
+}
+
+/**
+ * The phone the upsert matches on, checked here rather than at the API.
+ *
+ * An expression that resolved to nothing sends no phone number at all, and the
+ * API can only answer that with a bare "Required" — which names no field and
+ * sends people hunting. Fail in the node, where the field has a name.
+ */
+function requirePhone(this: IExecuteFunctions, i: number): string {
+	const raw = this.getNodeParameter('phoneE164', i, '');
+	const phone = typeof raw === 'string' ? raw.trim() : '';
+	if (!phone) {
+		throw new NodeOperationError(
+			this.getNode(),
+			'Phone Number is empty. Create or Update matches the contact on it, so give an E.164 number with the leading + (e.g. +919876543210). If an expression feeds this field, check it resolved.',
+			{ itemIndex: i },
+		);
+	}
+	if (!E164.test(phone)) {
+		throw new NodeOperationError(
+			this.getNode(),
+			`"${phone}" is not an E.164 phone number. Use the country code with a leading + and digits only (e.g. +919876543210).`,
+			{ itemIndex: i },
+		);
+	}
+	return phone;
+}
+
+/**
+ * What the contact already carries, so Merge can fold the supplied keys over it.
+ *
+ * Both verbs write `attributes` wholesale, so without this a workflow that sets
+ * one field erases every other one the workspace captured.
+ */
+async function storedAttributes(this: IExecuteFunctions, id: string): Promise<IDataObject> {
+	const response = await wacrApiRequest.call(this, 'GET', `/v1/contacts/${id}`);
+	const contact = (response.contact as IDataObject | undefined) ?? {};
+	return (contact.attributes as IDataObject | null) ?? {};
+}
+
+/**
+ * The same, for the create path, which knows a phone number rather than an ID.
+ *
+ * No match means there is no contact yet, so there is nothing to merge and what
+ * the user typed is already the whole bag. The lookup filters the most recent
+ * contacts rather than indexing the number, so a very large workspace can hide
+ * an old contact from it — Update Only (PATCH), addressed by ID, is the merge
+ * that is always exact.
+ */
+async function storedAttributesForPhone(
+	this: IExecuteFunctions,
+	phoneE164: string,
+	i: number,
+): Promise<IDataObject> {
+	const response = await wacrApiRequest.call(
+		this,
+		'GET',
+		'/v1/contacts',
+		{},
+		{ q: phoneE164, limit: 500 },
+	);
+	const matches = (response.contacts as IDataObject[] | undefined) ?? [];
+	// A workspace that hides digits returns a masked number, so the exact compare
+	// can miss — but a complete number matches one contact, so a lone hit is it.
+	const match =
+		matches.find((contact) => contact.phoneE164 === phoneE164) ??
+		(matches.length === 1 ? matches[0] : undefined);
+	if (!match && matches.length > 1) {
+		throw new NodeOperationError(
+			this.getNode(),
+			`More than one contact matched ${phoneE164}, so there is no single attribute bag to merge into. Use Update Only (PATCH) with a contact ID.`,
+			{ itemIndex: i },
+		);
+	}
+	return (match?.attributes as IDataObject | null) ?? {};
+}
+
+/** Create the contact, or update it when the number is already known (POST). */
+async function createContact(this: IExecuteFunctions, i: number): Promise<IDataObject> {
+	const phoneE164 = requirePhone.call(this, i);
+	const fields = this.getNodeParameter('fields', i, {}) as IDataObject;
+	const body = contactPayload.call(this, fields);
+	body.phoneE164 = phoneE164;
+	const addresses = contactAddresses.call(this, i);
+	if (addresses.length) body.addresses = addresses;
+	if (body.attributes !== undefined && fields.attributesMode === 'merge') {
+		const stored = await storedAttributesForPhone.call(this, phoneE164, i);
+		body.attributes = { ...stored, ...(body.attributes as IDataObject) };
+	}
+	return await wacrApiRequest.call(this, 'POST', '/v1/contacts', body);
+}
+
+/** Update a contact that already exists, addressed by ID (PATCH). */
+async function updateContact(this: IExecuteFunctions, i: number): Promise<IDataObject> {
+	const id = this.getNodeParameter('contactId', i, undefined, { extractValue: true }) as string;
+	const fields = this.getNodeParameter('updateFields', i, {}) as IDataObject;
+	const body = contactPayload.call(this, fields);
+	const addresses = contactAddresses.call(this, i);
+	if (addresses.length) body.addresses = addresses;
+	if (body.attributes !== undefined && fields.attributesMode === 'merge') {
+		const stored = await storedAttributes.call(this, id);
+		body.attributes = { ...stored, ...(body.attributes as IDataObject) };
+	}
+	if (!Object.keys(body).length) {
+		throw new NodeOperationError(this.getNode(), 'Set at least one field to update.', {
+			itemIndex: i,
+		});
+	}
+	return await wacrApiRequest.call(this, 'PATCH', `/v1/contacts/${id}`, body);
+}
+
 async function contactOperation(
 	this: IExecuteFunctions,
 	operation: string,
@@ -270,9 +487,12 @@ async function contactOperation(
 ): Promise<IDataObject[]> {
 	switch (operation) {
 		case 'upsert': {
-			const body = contactPayload.call(this, this.getNodeParameter('fields', i, {}) as IDataObject);
-			body.phoneE164 = this.getNodeParameter('phoneE164', i) as string;
-			return [await wacrApiRequest.call(this, 'POST', '/v1/contacts', body)];
+			// One operation, either verb: POST matches on the phone number and
+			// creates when it is new, PATCH touches only the fields that are filled
+			// in on a contact that already exists.
+			const method = this.getNodeParameter('method', i, 'POST') as string;
+			if (method === 'PATCH') return [await updateContact.call(this, i)];
+			return [await createContact.call(this, i)];
 		}
 		case 'get': {
 			const id = this.getNodeParameter('contactId', i, undefined, { extractValue: true }) as string;
@@ -287,16 +507,8 @@ async function contactOperation(
 			const response = await wacrApiRequest.call(this, 'GET', '/v1/contacts', {}, qs);
 			return (response.contacts as IDataObject[]) ?? [];
 		}
-		case 'update': {
-			const id = this.getNodeParameter('contactId', i, undefined, { extractValue: true }) as string;
-			const body = contactPayload.call(this, this.getNodeParameter('updateFields', i, {}) as IDataObject);
-			if (!Object.keys(body).length) {
-				throw new NodeOperationError(this.getNode(), 'Set at least one field to update.', {
-					itemIndex: i,
-				});
-			}
-			return [await wacrApiRequest.call(this, 'PATCH', `/v1/contacts/${id}`, body)];
-		}
+		case 'update':
+			return [await updateContact.call(this, i)];
 		case 'delete': {
 			const id = this.getNodeParameter('contactId', i, undefined, { extractValue: true }) as string;
 			const response = await wacrApiRequest.call(this, 'DELETE', `/v1/contacts/${id}`);
@@ -311,14 +523,68 @@ async function contactOperation(
 	}
 }
 
-/* ── note (internal conversation comment) ─────────────────────────────────── */
+/* ── comment (internal conversation note) ─────────────────────────────────── */
+
+/**
+ * The contact id behind an email address.
+ *
+ * The API resolves a UUID, a short ID or a phone number straight from the URL,
+ * but not an email — so the node looks that one up. The search filters the most
+ * recently created contacts rather than indexing the address, so a very large
+ * workspace can hide an old contact from it; ID and mobile are always exact.
+ */
+async function contactIdForEmail(
+	this: IExecuteFunctions,
+	email: string,
+	i: number,
+): Promise<string> {
+	const response = await wacrApiRequest.call(this, 'GET', '/v1/contacts', {}, { q: email, limit: 500 });
+	const wanted = email.toLowerCase();
+	const matches = (response.contacts as IDataObject[] | undefined) ?? [];
+	const match = matches.find(
+		(contact) => String(contact.email ?? '').toLowerCase() === wanted,
+	);
+	if (!match?.id) {
+		throw new NodeOperationError(
+			this.getNode(),
+			`No contact has the email ${email}. Check the address, or address the contact by ID or mobile number.`,
+			{ itemIndex: i },
+		);
+	}
+	return match.id as string;
+}
+
+/**
+ * The URL key for the contact a comment belongs to.
+ *
+ * The locator's MODE decides how: an email is resolved to an id first, a mobile
+ * number drops its leading + (the API keys chat threads on bare E.164 digits),
+ * and everything else — including a plain string from an expression — is passed
+ * through as typed.
+ */
+async function commentContactKey(this: IExecuteFunctions, i: number): Promise<string> {
+	const raw = this.getNodeParameter('contact', i) as IDataObject | string;
+	const locator = typeof raw === 'object' && raw !== null ? raw : null;
+	const mode = locator ? (locator.mode as string | undefined) : undefined;
+	const value = String((locator ? locator.value : raw) ?? '').trim();
+	if (!value) {
+		throw new NodeOperationError(
+			this.getNode(),
+			'Contact is empty. Give the contact ID, mobile number or email address the comment belongs to.',
+			{ itemIndex: i },
+		);
+	}
+	if (mode === 'email') return await contactIdForEmail.call(this, value, i);
+	if (mode === 'phone') return value.replace(/^\+/, '');
+	return value;
+}
 
 async function commentOperation(
 	this: IExecuteFunctions,
 	operation: string,
 	i: number,
 ): Promise<IDataObject[]> {
-	const contact = encodeURIComponent(this.getNodeParameter('contact', i, undefined, { extractValue: true }) as string);
+	const contact = encodeURIComponent(await commentContactKey.call(this, i));
 	const endpoint = `/v1/conversations/${contact}/comments`;
 
 	if (operation === 'add') {
@@ -341,7 +607,7 @@ async function commentOperation(
 		return (response.comments as IDataObject[]) ?? [];
 	}
 
-	throw new NodeOperationError(this.getNode(), `Unknown note operation: ${operation}`, {
+	throw new NodeOperationError(this.getNode(), `Unknown comment operation: ${operation}`, {
 		itemIndex: i,
 	});
 }

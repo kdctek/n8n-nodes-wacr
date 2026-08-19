@@ -6,6 +6,84 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.6] — 2026-08-20
+
+### Added
+
+- **Contact → Create or Update now carries a Method.** *Create or Update (POST)* matches on the
+  phone number and creates the contact when it is new; *Update Only (PATCH)* addresses an
+  existing contact by ID and touches only the fields that are filled in. The separate **Update**
+  operation is unchanged.
+- **Attributes Mode** on both write paths. Attributes are written wholesale by the API, so
+  *Replace* (the previous, unchanged behaviour) erases every key you leave out. *Merge* reads the
+  contact first and folds your keys over the stored ones, at the cost of one extra request. Merge
+  is exact on the PATCH method; on POST it finds the contact by searching the 500 most recently
+  created contacts for the number, and refuses rather than guessing when two of them match.
+- **Addresses** on Create or Update and Update — label, purpose, recipient name/mobile/email, two
+  address lines, city, state, pincode, country, coordinates, DIGIPIN and a delivery instruction.
+  The stored list is append-only, so nothing sent here replaces or removes an address the contact
+  already shared, and a repeat submission is dropped rather than duplicated.
+- **Source** on Create or Update — the "Via …" badge, stamped when the contact is created. An
+  integration kind (`shopify`, `woocommerce`, `qtap`) keeps its brand badge; anything else is
+  stored as `api:your-slug`.
+
+- **Comment → Contact takes a mobile number or an email address**, not just an ID. The locator
+  gained *By Mobile* (passed to the API as bare E.164, which is the URL form) and *By Email*
+  (looked up by the node, since the API resolves IDs and phone numbers but not addresses — an
+  address nobody has fails with a message naming it).
+- **WA.cr Trigger: Event, Event Variable, Node ID and Simplify options.** Event matches
+  comma-separated, case-insensitive labels against a run variable your Auto Flow sets (`event` by
+  default), falling back to the payload's own `event` — every webhook step arrives as
+  `auto_flow.node` today, so a flow-set variable is what makes one trigger URL serve many flows.
+  Simplify flattens the contact and run variables to the top level, with the event's own fields
+  winning a name clash.
+
+### Changed
+
+- The **Note** resource is now called **Comment**, which is what the console and the mobile app
+  call it. Display only — the stored value was always `comment`, so saved workflows are
+  untouched.
+
+### Fixed
+
+- An empty or malformed **Phone Number** on Create or Update now fails in the node, naming the
+  field. An expression that resolved to nothing used to reach the API as a missing field and come
+  back as `422 invalid_body / Required`, which names nothing at all.
+- An address with a recipient but no place, or one coordinate without the other, is refused
+  before the request rather than by the API.
+
+## [0.3.5] — 2026-08-11
+
+### Fixed
+
+- **The WA.cr Trigger no longer declares `usableAsTool`.** A trigger has no `execute()`, so an
+  AI Agent could never invoke it — the flag only advertised an affordance that did not exist.
+  The action node keeps it.
+
+## [0.3.4] — 2026-08-03
+
+### Fixed
+
+- Both codex sidecars now file the nodes under **Marketing & Content**, the category name n8n
+  actually recognises. Plain `Marketing` matched nothing, so the nodes surfaced under
+  Communication and Sales only.
+
+### Changed
+
+- The package description carries a literal em dash in place of a `\u2014` escape. JSON parses
+  the two identically, so nothing a user sees changed — recorded only because it is in the
+  release diff.
+
+## [0.3.3] — 2026-08-03
+
+No functional change. **0.3.3 and 0.3.4 ship byte-identical code.** Both numbers were tagged
+the same afternoon to recover from three releases that the workflow's tag-matches-manifest
+assertion stopped: `v0.2.2`, `v0.3.2` and a first `v0.3.3` were each pushed while `package.json`
+still said `0.3.1`. The two tags then published four seconds apart — 0.3.4 at 16:05:18Z, this one
+at 16:05:22Z — so the category fix described under 0.3.4 is present in both, and there is no
+reason to prefer one over the other. **0.3.2 was burnt in the process** and is permanently
+skipped.
+
 ## [0.3.1] — 2026-07-31
 
 ### Changed
@@ -173,7 +251,11 @@ otherwise identical to this release._
 - WA.cr's error envelope unwrapped into node error messages, with Continue On Fail support.
 - `usableAsTool`, so an AI Agent can call the node directly.
 
-[Unreleased]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.6...HEAD
+[0.3.6]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.5...v0.3.6
+[0.3.5]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.3...v0.3.5
+[0.3.3]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.4...v0.3.3
+[0.3.4]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.1...v0.3.4
 [0.3.1]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.2.0...v0.2.1

@@ -803,6 +803,266 @@ test('contact: update with no fields fails before any request', async () => {
 	);
 });
 
+test('contact: create or update on the PATCH method updates by ID', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'upsert',
+			method: 'PATCH',
+			contactId: 'c1',
+			updateFields: { attributes: '{"visit":"Requested"}' },
+		},
+	});
+
+	assert.strictEqual(received.length, 1);
+	assert.strictEqual(received[0].method, 'PATCH');
+	assert.strictEqual(received[0].path, '/v1/contacts/c1');
+	assert.deepStrictEqual(received[0].body, { attributes: { visit: 'Requested' } });
+});
+
+test('contact: an empty phone number fails before any request', async () => {
+	await assert.rejects(
+		run({
+			params: { ...base, resource: 'contact', operation: 'upsert', phoneE164: '', fields: {} },
+		}),
+		/Phone Number is empty/i,
+	);
+});
+
+test('contact: a phone number that is not E.164 fails before any request', async () => {
+	await assert.rejects(
+		run({
+			params: {
+				...base,
+				resource: 'contact',
+				operation: 'upsert',
+				phoneE164: '9876543210',
+				fields: {},
+			},
+		}),
+		/not an E\.164 phone number/i,
+	);
+});
+
+test('contact: source rides along on create', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'upsert',
+			phoneE164: '+919876543210',
+			fields: { source: 'shopify' },
+		},
+	});
+
+	assert.deepStrictEqual(received[0].body, { source: 'shopify', phoneE164: '+919876543210' });
+});
+
+test('contact: addresses drop blank fields and send coordinates as numbers', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'upsert',
+			phoneE164: '+919876543210',
+			fields: {},
+			addresses: {
+				address: [
+					{
+						label: 'Home',
+						purpose: 'shipping',
+						name: '',
+						mobile: '  ',
+						addressLine1: 'Flat 4B',
+						city: 'Mumbai',
+						pincode: '400050',
+						country: 'IN',
+						latitude: '19.0607',
+						longitude: '72.8362',
+						digipin: '',
+						instruction: '',
+					},
+				],
+			},
+		},
+	});
+
+	assert.deepStrictEqual(received[0].body.addresses, [
+		{
+			label: 'Home',
+			purpose: 'shipping',
+			addressLine1: 'Flat 4B',
+			city: 'Mumbai',
+			pincode: '400050',
+			country: 'IN',
+			latitude: 19.0607,
+			longitude: 72.8362,
+		},
+	]);
+});
+
+test('contact: addresses ride along on an update too', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'update',
+			contactId: 'c1',
+			updateFields: {},
+			addresses: { address: [{ label: 'Warehouse 2', city: 'Pune' }] },
+		},
+	});
+
+	assert.strictEqual(received[0].method, 'PATCH');
+	assert.deepStrictEqual(received[0].body, {
+		addresses: [{ city: 'Pune', label: 'Warehouse 2' }],
+	});
+});
+
+test('contact: a lone coordinate fails before any request', async () => {
+	await assert.rejects(
+		run({
+			params: {
+				...base,
+				resource: 'contact',
+				operation: 'upsert',
+				phoneE164: '+919876543210',
+				fields: {},
+				addresses: { address: [{ city: 'Mumbai', latitude: '19.0607' }] },
+			},
+		}),
+		/both a latitude and a longitude/i,
+	);
+});
+
+test('contact: an address that says who but not where fails before any request', async () => {
+	await assert.rejects(
+		run({
+			params: {
+				...base,
+				resource: 'contact',
+				operation: 'upsert',
+				phoneE164: '+919876543210',
+				fields: {},
+				addresses: { address: [{ name: 'Asha Menon', mobile: '+919876543210' }] },
+			},
+		}),
+		/who but not where/i,
+	);
+});
+
+test('contact: merge folds the new attributes over the stored ones', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'update',
+			contactId: 'c1',
+			updateFields: { attributes: '{"visit":"Completed"}', attributesMode: 'merge' },
+		},
+		handler: (entry) =>
+			entry.method === 'GET'
+				? {
+						json: {
+							ok: true,
+							contact: {
+								id: 'c1',
+								attributes: { role: 'Designer', visit: 'Requested', sources: [{ source: 'wa_chat' }] },
+							},
+						},
+					}
+				: { json: { ok: true, id: 'c1' } },
+	});
+
+	assert.deepStrictEqual(
+		received.map((entry) => `${entry.method} ${entry.path}`),
+		['GET /v1/contacts/c1', 'PATCH /v1/contacts/c1'],
+	);
+	// The stored keys survive, the supplied one wins, and provenance rides back.
+	assert.deepStrictEqual(received[1].body.attributes, {
+		role: 'Designer',
+		visit: 'Completed',
+		sources: [{ source: 'wa_chat' }],
+	});
+});
+
+test('contact: replace mode sends only what was given, with no lookup', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'update',
+			contactId: 'c1',
+			updateFields: { attributes: '{"visit":"Completed"}', attributesMode: 'replace' },
+		},
+	});
+
+	assert.strictEqual(received.length, 1);
+	assert.deepStrictEqual(received[0].body, { attributes: { visit: 'Completed' } });
+});
+
+test('contact: merge on create looks the contact up by phone first', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'upsert',
+			phoneE164: '+919876543210',
+			fields: { attributes: '{"visit":"Completed"}', attributesMode: 'merge' },
+		},
+		handler: (entry) =>
+			entry.method === 'GET'
+				? {
+						json: {
+							ok: true,
+							contacts: [
+								{ id: 'c1', phoneE164: '+919876543210', attributes: { role: 'Designer' } },
+							],
+						},
+					}
+				: { json: { ok: true, id: 'c1' } },
+	});
+
+	assert.strictEqual(received[0].method, 'GET');
+	assert.deepStrictEqual(received[0].query, { q: '+919876543210', limit: '500' });
+	assert.deepStrictEqual(received[1].body.attributes, { role: 'Designer', visit: 'Completed' });
+});
+
+test('contact: merge on create sends the attributes as-is for a new number', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'contact',
+			operation: 'upsert',
+			phoneE164: '+919876543210',
+			fields: { attributes: '{"visit":"Requested"}', attributesMode: 'merge' },
+		},
+		handler: (entry) =>
+			entry.method === 'GET' ? { json: { ok: true, contacts: [] } } : { json: { ok: true, id: 'c1' } },
+	});
+
+	assert.deepStrictEqual(received[1].body.attributes, { visit: 'Requested' });
+});
+
+test('contact: merge on create refuses to guess between two matches', async () => {
+	await assert.rejects(
+		run({
+			params: {
+				...base,
+				resource: 'contact',
+				operation: 'upsert',
+				phoneE164: '+919876543210',
+				fields: { attributes: '{"visit":"Requested"}', attributesMode: 'merge' },
+			},
+			handler: () => ({
+				json: { ok: true, contacts: [{ id: 'c1', phoneE164: '+91987*****10' }, { id: 'c2' }] },
+			}),
+		}),
+		/More than one contact matched/i,
+	);
+});
+
 test('contact: delete uses DELETE on the id path', async () => {
 	const { received } = await run({
 		params: { ...base, resource: 'contact', operation: 'delete', contactId: 'c1' },
@@ -878,6 +1138,84 @@ test('template: create sends the parsed components array', async () => {
 		components: [{ type: 'BODY', text: 'Hi' }],
 		parameterFormat: 'NAMED',
 	});
+});
+
+test('comment: By Email resolves the contact before posting', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'comment',
+			operation: 'add',
+			contact: { __rl: true, mode: 'email', value: 'Asha@Example.com' },
+			body: 'Called back',
+			options: {},
+		},
+		handler: (entry) =>
+			entry.method === 'GET'
+				? {
+						json: {
+							ok: true,
+							contacts: [
+								{ id: 'c-other', email: 'other@example.com' },
+								{ id: 'c-1', email: 'asha@example.com' },
+							],
+						},
+					}
+				: { json: { ok: true, comment: { id: 'n-1' } } },
+	});
+
+	assert.deepStrictEqual(received[0].query, { q: 'Asha@Example.com', limit: '500' });
+	assert.strictEqual(received[1].method, 'POST');
+	assert.strictEqual(received[1].path, '/v1/conversations/c-1/comments');
+});
+
+test('comment: an email nobody has fails with a message naming it', async () => {
+	await assert.rejects(
+		run({
+			params: {
+				...base,
+				resource: 'comment',
+				operation: 'add',
+				contact: { __rl: true, mode: 'email', value: 'nobody@example.com' },
+				body: 'Called back',
+				options: {},
+			},
+			handler: () => ({ json: { ok: true, contacts: [] } }),
+		}),
+		/No contact has the email nobody@example\.com/i,
+	);
+});
+
+test('comment: By Mobile drops the leading plus, which is the URL form', async () => {
+	const { received } = await run({
+		params: {
+			...base,
+			resource: 'comment',
+			operation: 'add',
+			contact: { __rl: true, mode: 'phone', value: ' +919876543210 ' },
+			body: 'Called back',
+			options: {},
+		},
+	});
+
+	assert.strictEqual(received.length, 1);
+	assert.strictEqual(received[0].path, '/v1/conversations/919876543210/comments');
+});
+
+test('comment: an empty contact fails before any request', async () => {
+	await assert.rejects(
+		run({
+			params: {
+				...base,
+				resource: 'comment',
+				operation: 'add',
+				contact: { __rl: true, mode: 'id', value: '   ' },
+				body: 'Called back',
+				options: {},
+			},
+		}),
+		/Contact is empty/i,
+	);
 });
 
 test('broadcast: create splits contact ids', async () => {
@@ -1778,4 +2116,90 @@ test('template pickers: a 403 on channels degrades to an unfiltered list', async
 	} finally {
 		server.close();
 	}
+});
+
+test('trigger: the Event filter matches the label the flow set in a variable', async () => {
+	const body = { ...flowEvent, variables: { event: 'Order_Paid', orderId: '1234' } };
+	const { ctx } = triggerContext({
+		params: {
+			authHeaderName: 'x-wacr-secret',
+			secret: 's3cret',
+			options: { event: 'appointment_booked, order_paid' },
+		},
+		headers: { 'x-wacr-secret': 's3cret' },
+		body,
+	});
+
+	const result = await new WacrTrigger().webhook.call(ctx);
+
+	assert.deepStrictEqual(result.workflowData, [[{ json: body }]]);
+});
+
+test('trigger: the Event filter drops a label it was not asked for', async () => {
+	const { ctx } = triggerContext({
+		params: {
+			authHeaderName: 'x-wacr-secret',
+			secret: 's3cret',
+			options: { event: 'order_paid' },
+		},
+		headers: { 'x-wacr-secret': 's3cret' },
+		body: { ...flowEvent, variables: { event: 'order_cancelled' } },
+	});
+
+	const result = await new WacrTrigger().webhook.call(ctx);
+
+	assert.deepStrictEqual(result, {});
+});
+
+test('trigger: the Event filter reads whichever variable was named', async () => {
+	const { ctx } = triggerContext({
+		params: {
+			authHeaderName: 'x-wacr-secret',
+			secret: 's3cret',
+			options: { event: 'won', eventVariable: 'stage' },
+		},
+		headers: { 'x-wacr-secret': 's3cret' },
+		body: { ...flowEvent, variables: { stage: 'won', event: 'ignored' } },
+	});
+
+	const result = await new WacrTrigger().webhook.call(ctx);
+
+	assert.strictEqual(result.workflowData?.[0]?.length, 1);
+});
+
+test('trigger: the Node ID filter drops events from other webhook steps', async () => {
+	const { ctx } = triggerContext({
+		params: { authHeaderName: 'x-wacr-secret', secret: 's3cret', options: { nodeId: 'n-9' } },
+		headers: { 'x-wacr-secret': 's3cret' },
+		body: flowEvent,
+	});
+
+	const result = await new WacrTrigger().webhook.call(ctx);
+
+	assert.deepStrictEqual(result, {});
+});
+
+test('trigger: Simplify flattens the event, and its own fields win a clash', async () => {
+	const { ctx } = triggerContext({
+		params: { authHeaderName: 'x-wacr-secret', secret: 's3cret', options: { simplify: true } },
+		headers: { 'x-wacr-secret': 's3cret' },
+		body: { ...flowEvent, variables: { orderId: '1234', phone: 'not the contact' } },
+	});
+
+	const result = await new WacrTrigger().webhook.call(ctx);
+
+	assert.deepStrictEqual(result.workflowData[0][0].json, {
+		orderId: '1234',
+		event: 'auto_flow.node',
+		firedAt: '2026-07-29T10:00:00.000Z',
+		test: false,
+		automationId: 'a-1',
+		nodeId: 'n-1',
+		enrolmentId: 'e-1',
+		contactId: 'c-1',
+		name: 'Sam',
+		phone: '+919876543210',
+		tags: [],
+		attributes: {},
+	});
 });

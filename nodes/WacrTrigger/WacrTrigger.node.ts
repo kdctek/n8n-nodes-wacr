@@ -36,6 +36,57 @@ function secretsMatch(a: string, b: string): boolean {
 	return diff === 0;
 }
 
+/**
+ * Does this event carry one of the labels the user filtered on?
+ *
+ * WA.cr sends every webhook step as the same event type, so the label a
+ * workflow branches on is a run VARIABLE the Auto Flow sets (`event` by
+ * default). The payload's own `event` is the fallback, so the filter still
+ * works the day WA.cr starts naming what triggered the run.
+ */
+function eventMatches(body: IDataObject, options: IDataObject): boolean {
+	const wanted = String(options.event ?? '')
+		.split(',')
+		.map((entry) => entry.trim().toLowerCase())
+		.filter((entry) => entry.length > 0);
+	if (!wanted.length) return true;
+
+	const variables = (body.variables ?? {}) as IDataObject;
+	const key = (String(options.eventVariable ?? '').trim() || 'event') as string;
+	const label = String(variables[key] ?? body.event ?? '')
+		.trim()
+		.toLowerCase();
+	return wanted.includes(label);
+}
+
+/**
+ * The event, flattened to the fields a workflow actually branches on.
+ *
+ * Run variables are hoisted alongside them, but the event's own fields win a
+ * name clash — a variable called `phone` would otherwise quietly replace the
+ * contact's number. Turn Simplify off to get the payload exactly as it arrived.
+ */
+function simplify(body: IDataObject): IDataObject {
+	const flow = (body.flow ?? {}) as IDataObject;
+	const contact = (body.contact ?? {}) as IDataObject;
+	const identities = (contact.identities ?? {}) as IDataObject;
+	const variables = (body.variables ?? {}) as IDataObject;
+	return {
+		...variables,
+		event: body.event,
+		firedAt: body.firedAt,
+		test: body.test === true,
+		automationId: flow.automationId,
+		nodeId: flow.nodeId,
+		enrolmentId: body.enrolmentId,
+		contactId: contact.id,
+		name: contact.name,
+		phone: identities.e164,
+		tags: contact.tags ?? [],
+		attributes: contact.attributes ?? {},
+	};
+}
+
 export class WacrTrigger implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'WA.cr Trigger',
@@ -99,12 +150,46 @@ export class WacrTrigger implements INodeType {
 							'Only run for events from this Auto Flow. Leave empty to accept every flow that posts here.',
 					},
 					{
+						displayName: 'Event',
+						name: 'event',
+						type: 'string',
+						default: '',
+						placeholder: 'e.g. order_paid, appointment_booked',
+						description:
+							'Only run when the flow labelled the event as one of these, comma-separated and case-insensitive. The label is a run variable your Auto Flow sets — WA.cr itself sends every webhook step as the same event type, so this is how one trigger serves many flows.',
+					},
+					{
+						displayName: 'Event Variable',
+						name: 'eventVariable',
+						type: 'string',
+						default: 'event',
+						placeholder: 'e.g. event',
+						description: 'Which run variable carries the label the Event filter matches on',
+					},
+					{
 						displayName: 'Ignore Test Events',
 						name: 'ignoreTestEvents',
 						type: 'boolean',
 						default: false,
 						description:
 							'Whether to acknowledge but skip events sent by the Auto Flow test runner, which arrive with test set to true',
+					},
+					{
+						displayName: 'Node ID',
+						name: 'nodeId',
+						type: 'string',
+						default: '',
+						placeholder: 'e.g. n-4',
+						description:
+							'Only run for events from this webhook step. Every step has its own URL, so this only matters when several of them share one n8n trigger.',
+					},
+					{
+						displayName: 'Simplify',
+						name: 'simplify',
+						type: 'boolean',
+						default: false,
+						description:
+							'Whether to return a simplified version of the response instead of the raw data',
 					},
 				],
 			},
@@ -163,7 +248,14 @@ export class WacrTrigger implements INodeType {
 		if (options.automationId && flow.automationId !== options.automationId) {
 			return {};
 		}
+		if (options.nodeId && flow.nodeId !== options.nodeId) {
+			return {};
+		}
+		if (!eventMatches(body, options)) {
+			return {};
+		}
 
-		return { workflowData: [this.helpers.returnJsonArray([body])] };
+		const payload = options.simplify === true ? simplify(body) : body;
+		return { workflowData: [this.helpers.returnJsonArray([payload])] };
 	}
 }

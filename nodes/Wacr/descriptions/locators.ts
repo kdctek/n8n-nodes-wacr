@@ -55,11 +55,13 @@ export function contactLocator(options: LocatorOptions): INodeProperties {
 }
 
 /**
- * Contact picker that also accepts a phone number or short ID.
+ * Contact picker that also accepts a mobile number, an email address or an ID.
  *
- * Notes hang off a contact rather than a channel, and the API resolves any of
- * UUID, business short ID or E.164 digits — so By ID is deliberately unvalidated
- * here. A UUID regex would reject input the API accepts.
+ * Comments hang off a contact rather than a channel. The API resolves a UUID, a
+ * business short ID or E.164 digits from the URL itself, so those go straight
+ * through and By ID stays deliberately unvalidated — a UUID regex would reject
+ * input the API accepts. It does NOT resolve an email, so By Email is looked up
+ * by the node before the call (see `contactIdForEmail`).
  */
 export function contactOrPhoneLocator(options: LocatorOptions): INodeProperties {
 	return {
@@ -81,7 +83,37 @@ export function contactOrPhoneLocator(options: LocatorOptions): INodeProperties 
 				displayName: 'By ID',
 				name: 'id',
 				type: 'string',
+				placeholder: 'e.g. 3f2a1b4c-5d6e-7f80-9a1b-2c3d4e5f6071',
+			},
+			{
+				displayName: 'By Mobile',
+				name: 'phone',
+				type: 'string',
 				placeholder: 'e.g. +919876543210',
+				validation: [
+					{
+						type: 'regex',
+						properties: {
+							regex: '^[+]?[1-9][0-9]{7,14}$',
+							errorMessage: 'Not a valid E.164 mobile number',
+						},
+					},
+				],
+			},
+			{
+				displayName: 'By Email',
+				name: 'email',
+				type: 'string',
+				placeholder: 'e.g. name@email.com',
+				validation: [
+					{
+						type: 'regex',
+						properties: {
+							regex: '^[^@\\s]+@[^@\\s.]+[.][^@\\s]+$',
+							errorMessage: 'Not a valid email address',
+						},
+					},
+				],
 			},
 		],
 	};

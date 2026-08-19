@@ -50,8 +50,8 @@ it was not granted fails the token request.
 | Message → Send, **From** picker | `channels:read` |
 | Contact → Get, Get Many | `contacts:read` |
 | Contact → Create or Update, Update, Delete | `contacts:write` |
-| Note → Get Many | `comments:read` |
-| Note → Add | `comments:write` |
+| Comment → Get Many | `comments:read` |
+| Comment → Add | `comments:write` |
 | Template → Get Many | `templates:read` |
 | Template → Create | `templates:write` |
 | Broadcast → Get Many | `broadcasts:read` |
@@ -182,37 +182,149 @@ Three limits are worth knowing before you build on it:
 - **It fires per flow step, not per account.** The trigger means "this Auto Flow reached this
   step" — it is not a feed of every inbound message.
 
-Optionally filter to a single **Automation ID**, or ignore events from the Auto Flow test
-runner.
+#### What arrives
+
+Every webhook step posts the same shape. `event` is `auto_flow.node` on all of them — WA.cr does
+not yet name what triggered the run — so the event's *meaning* is whatever your flow puts in
+`variables`:
+
+```json
+{
+  "event": "auto_flow.node",
+  "firedAt": "2026-08-20T10:00:00.000Z",
+  "test": false,
+  "tenantId": "…",
+  "flow": { "automationId": "…", "versionId": "…", "nodeId": "…" },
+  "enrolmentId": "…",
+  "contact": {
+    "id": "…", "name": "Sam", "identities": { "e164": "+919876543210" },
+    "attributes": {}, "tags": [], "country": "IN", "source": "wa_chat"
+  },
+  "variables": { "orderId": "1234" }
+}
+```
+
+#### Filtering and shaping
+
+| Option | What it does |
+| --- | --- |
+| **Automation ID** | Only run for this Auto Flow |
+| **Node ID** | Only run for this webhook step — each step has its own URL, so this matters only when several share one trigger |
+| **Event** | Comma-separated labels, case-insensitive. Matched against the run variable named below, falling back to the payload's own `event`. |
+| **Event Variable** | Which run variable carries the label (default `event`) |
+| **Ignore Test Events** | Acknowledge but skip events from the Auto Flow test runner |
+| **Simplify** | Flatten the event — `contactId`, `name`, `phone`, `tags`, `attributes`, `automationId`, `nodeId` and your run variables at the top level. The event's own fields win a name clash; turn it off for the payload exactly as it arrived. |
+
+To use **Event**, set a variable in the Auto Flow before the webhook step — `event = order_paid`
+— and filter on it here. One trigger URL can then serve many flows, and the branch logic reads
+as an event name rather than a flow UUID.
+
+#### What you can trigger on today
+
+The webhook step can sit after any Auto Flow trigger, so these all reach n8n: an inbound
+WhatsApp message (first message, keyword, media, location, shared contact, interactive reply, a
+completed WhatsApp Flow), a customer-service window about to close with no reply, a store order
+placed, paid or fulfilled, a click-to-WhatsApp ad click, a payment confirmation, a contact
+tagged or added to a segment, broadcast engagement, a signup opt-in, and an inbound webhook from
+another system.
+
+Appointments and voice events (booked, approved, missed call, incoming call) have no Auto Flow
+trigger yet, so there is nothing to attach a webhook step to — they are not available to this
+node.
 
 ### Contact
 
-**Create or Update** (upserts on the phone number), **Get**, **Get Many** (search text and tag
-filters), **Update**, **Delete** (returns `{ "deleted": true }`). Deleting a contact retains
-their conversation history.
+**Create or Update**, **Get**, **Get Many** (search text and tag filters), **Update**,
+**Delete** (returns `{ "deleted": true }`). Deleting a contact retains their conversation
+history.
 
 Operations that address one contact use a **Resource Locator** — pick from a searchable list,
 or switch to **By ID** to paste a UUID or drive it from an expression. The same applies to
-Note → Contact and to the template pickers on Message and Broadcast.
+Comment → Contact and to the template pickers on Message and Broadcast.
 
-Tags are entered comma-separated and sent as an array. Attributes are a JSON object. On
-**Update**, both replace what is stored rather than merging.
+#### Create or Update: which method to use
 
-**First Name** and **Last Name** hold the person's name; **Display Name** is the label the
-inbox shows. Leave the display name empty and it mirrors the first and last name — set it and
-your label wins from then on. **Create or Update** writes the record wholesale, so a field you
-leave empty is cleared on a contact that already exists; **Update** only sends the fields you
-fill in, and so leaves the rest alone.
+**Create or Update** carries a **Method**, because the two ways of writing a contact behave
+differently:
 
-### Note
+| Method | Addressed by | Behaviour |
+| --- | --- | --- |
+| **Create or Update (POST)** | Phone Number (E.164, leading `+`) | Creates the contact when the number is new. Names and tags are written wholesale — leave Tags empty and a contact that already exists is left with none. |
+| **Update Only (PATCH)** | Contact (list or ID) | Touches only the fields you fill in. Fails with `not_found` if the contact is gone. |
 
-Internal comments on a conversation — visible to your team in the console, never sent to the
-customer. They hang off the contact, not a channel, so there is no channel to pick.
+**Update** is the same PATCH call with the same fields, kept as its own operation.
+
+The phone number is checked in the node before anything is sent: an expression that resolves to
+nothing would otherwise reach the API as a missing field and come back as a bare
+`422 invalid_body / Required`, which names no field.
+
+#### Attributes
+
+Attributes are a JSON object keyed by the custom-field names your workspace defined. **Both**
+methods write the bag wholesale, so **Attributes Mode** decides what happens to the keys you did
+not send:
+
+- **Replace** (default) — send only these attributes. Every other key is erased.
+- **Merge** — read the contact first, then fold your keys over the stored ones. Costs one extra
+  request against the 120/minute limit.
+
+Merge on **Update Only (PATCH)** is exact: it reads the contact by ID. Merge on **Create or
+Update (POST)** finds the contact by searching the 500 most recently created contacts for the
+number, so on a very large workspace an old contact can fall outside that window and the write
+degrades to a replace — use the PATCH method when the merge has to be guaranteed. Two matches
+with no exact number (a workspace that masks digits) fails rather than guessing.
+
+#### Names, tags and source
+
+**First Name** and **Last Name** hold the person's name; **Display Name** is the label the inbox
+shows. Leave the display name empty and it mirrors the first and last name — set it and your
+label wins from then on. Tags are entered comma-separated, sent as an array, and replace what is
+stored.
+
+**Source** is the "Via …" badge, stamped when the contact is **created** and never rewritten —
+so it only appears on the POST method. Use an integration kind (`shopify`, `woocommerce`,
+`qtap`) to get its brand badge, or a short slug of your own, which is stored as `api:your-slug`.
+Platform values are refused with `invalid_source`.
+
+#### Addresses
+
+**Addresses** adds postal addresses to the contact on either method. The stored list is
+**append-only**: nothing you send replaces or removes an address the contact already shared, and
+an entry identical to a stored one is dropped rather than duplicated, so a workflow that runs on
+a schedule will not grow the list.
+
+Each address takes a label, purpose (billing/shipping/unclassified), recipient name, mobile and
+email, two address lines, city, state, pincode, country (code or name — resolved to the ISO
+code), coordinates, DIGIPIN and a delivery instruction. Every field is optional, but an address
+needs at least one field saying *where* — a line, city, state, pincode, label, DIGIPIN or a pair
+of coordinates. Latitude and longitude are typed as text and must be given together; leave them
+empty and no coordinate is sent. Inside India the DIGIPIN is worked out from the coordinates
+when you do not supply one.
+
+Addresses come back on **Get** as `addresses`, alongside the contact's `source`.
+
+### Comment
+
+Internal comments on a conversation — visible to your team in the console and the mobile app,
+never sent to the customer. They hang off the contact, not a channel, so there is no channel to
+pick.
 
 **Add** takes WhatsApp markup, optional `@` mentions of workspace members (each is notified by
-email and WhatsApp), attached media UUIDs and an anchor message. Notes added this way show as
+email and WhatsApp), attached media UUIDs and an anchor message. Comments added this way show as
 "via API" with no author. **Get Many** supports an **Updated After** cursor for delta polling;
-deleted notes come back as tombstones so a poll can drop them.
+deleted comments come back as tombstones so a poll can drop them.
+
+Address the contact whichever way your workflow knows them — the locator has four modes:
+
+| Mode | Takes | Resolved |
+| --- | --- | --- |
+| **From List** | a searchable picker | — |
+| **By ID** | contact UUID, or a business short ID | by the API, exactly |
+| **By Mobile** | E.164 with or without the leading `+` | by the API, exactly |
+| **By Email** | an email address | by the node, which looks the contact up first and fails if no one has that address |
+
+By Email costs one extra request, and its lookup searches the 500 most recently created contacts
+rather than indexing the address — so on a very large workspace, prefer ID or mobile.
 
 ### Template
 

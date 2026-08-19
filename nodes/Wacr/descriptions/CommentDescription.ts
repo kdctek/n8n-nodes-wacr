@@ -17,14 +17,14 @@ export const commentOperations: INodeProperties[] = [
 			{
 				name: 'Add',
 				value: 'add',
-				description: 'Add an internal note to a conversation',
-				action: 'Add a note',
+				description: 'Add an internal comment to a conversation',
+				action: 'Add a comment',
 			},
 			{
 				name: 'Get Many',
 				value: 'getAll',
-				description: 'List the internal notes on a conversation',
-				action: 'Get many notes',
+				description: 'List the internal comments on a conversation',
+				action: 'Get many comments',
 			},
 		],
 		default: 'add',
@@ -36,17 +36,17 @@ export const commentFields: INodeProperties[] = [
 		displayName: 'Contact',
 		name: 'contact',
 		description:
-			'Whose conversation to annotate. Notes are channel-agnostic — they hang off the contact, not a channel. By ID also accepts a business short ID or E.164 digits.',
+			'Whose conversation to annotate. Comments are channel-agnostic — they hang off the contact, not a channel. Address them by ID, mobile number or email address; By ID also accepts a business short ID.',
 		displayOptions: showFor(['add', 'getAll']),
 	}),
 	{
-		displayName: 'Note',
+		displayName: 'Comment',
 		name: 'body',
 		type: 'string',
 		typeOptions: { rows: 4 },
 		default: '',
 		description:
-			'Note text in WhatsApp markup, up to 4096 characters. Never sent to the customer. May be empty only when attachments are given.',
+			'Comment text in WhatsApp markup, up to 4096 characters. Never sent to the customer. May be empty only when attachments are given.',
 		displayOptions: showFor(['add']),
 	},
 	{
@@ -77,7 +77,7 @@ export const commentFields: INodeProperties[] = [
 				name: 'refMessageId',
 				type: 'string',
 				default: '',
-				description: 'A message UUID in this conversation that the note is about',
+				description: 'A message UUID in this conversation that the comment is about',
 			},
 		],
 	},
@@ -95,7 +95,7 @@ export const commentFields: INodeProperties[] = [
 				type: 'dateTime',
 				default: '',
 				description:
-					'Only notes updated after this instant. Deleted notes come back as tombstones so a delta poll can drop them.',
+					'Only comments updated after this instant. Deleted comments come back as tombstones so a delta poll can drop them.',
 			},
 		],
 	},
