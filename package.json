@@ -1,6 +1,6 @@
 {
   "name": "@kdctek/n8n-nodes-wacr",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "n8n community node for WA.cr — send WhatsApp and email messages, manage contacts, templates, broadcasts, media and internal conversation notes.",
   "keywords": [
     "n8n-community-node-package",

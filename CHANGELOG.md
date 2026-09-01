@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.7] — 2026-09-01
+
+### Changed
+
+- **README** — the *Notes and limits* → *Triggers* bullet still said the package shipped actions
+  only, which stopped being true when the **WA.cr Trigger** landed in 0.3.5. It now points at the
+  trigger's own section and states the real limit: setup is manual, because WA.cr has no
+  programmatic webhook-subscription API. Documentation only; no code change.
+
 ## [0.3.6] — 2026-08-20
 
 ### Added
@@ -251,7 +260,8 @@ otherwise identical to this release._
 - WA.cr's error envelope unwrapped into node error messages, with Continue On Fail support.
 - `usableAsTool`, so an AI Agent can call the node directly.
 
-[Unreleased]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.6...HEAD
+[Unreleased]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.7...HEAD
+[0.3.7]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.6...v0.3.7
 [0.3.6]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.3...v0.3.5
 [0.3.3]: https://github.com/kdctek/n8n-nodes-wacr/compare/v0.3.4...v0.3.3

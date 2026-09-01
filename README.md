@@ -355,9 +355,9 @@ the library, optionally filtered by kind.
 - **Channels** — the send endpoint accepts more channel values than this node offers, but only
   WhatsApp and email dispatch today; the rest return `channel_not_implemented`. They will be
   added here as they go live.
-- **Triggers** — this package ships actions only. WA.cr has no tenant-facing webhook
-  subscription yet, so to start a workflow from a WA.cr event, use an n8n **Webhook** node and
-  point a WA.cr Auto Flow's *Webhook* step at its URL.
+- **Triggers** — the **WA.cr Trigger** requires manual setup: WA.cr has no programmatic
+  webhook-subscription API, so the webhook URL must be pasted into the Auto Flow by hand. See
+  [WA.cr Trigger](#wacr-trigger) above.
 - **Errors** — WA.cr's `{ ok: false, error: { code, message } }` envelope is unwrapped into the
   node error message, with the code in the description. Turn on **Continue On Fail** to route
   failures to the output branch instead.
