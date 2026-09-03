@@ -1,6 +1,9 @@
 import type {
+	ICredentialsDecrypted,
+	ICredentialTestFunctions,
 	IDataObject,
 	IHookFunctions,
+	INodeCredentialTestResult,
 	INodeType,
 	INodeTypeDescription,
 	IWebhookFunctions,
@@ -14,7 +17,9 @@ import { NodeConnectionTypes } from 'n8n-workflow';
  * WA.cr has no webhook-subscription API, so this trigger cannot register itself
  * — `webhookMethods` create/delete are deliberately absent. Setup is manual: the
  * user copies this node's URL into an Auto Flow webhook step and adds a secret
- * header there, which this node then checks.
+ * header there, which this node then checks. The header name and secret are a
+ * **WA.cr Trigger API** credential, not node parameters — a secret typed into a
+ * property is saved into the workflow and rides along with every export.
  *
  * Three upstream constraints shape the design, and all three are surfaced in the
  * UI rather than hidden:
@@ -23,6 +28,13 @@ import { NodeConnectionTypes } from 'n8n-workflow';
  *   - There are no retries and a 10s timeout, so delivery is at-most-once.
  *   - Events are not signed, so a shared secret in a header is the only auth.
  */
+
+/**
+ * Mirrors the credential's `authHeaderName` default, and stands in for it when
+ * the field is cleared — a blank header name would otherwise reject everything
+ * with no clue as to why.
+ */
+const DEFAULT_AUTH_HEADER = 'x-wacr-secret';
 
 /**
  * Compare without leaking length or position through timing. `crypto` would do
@@ -99,6 +111,16 @@ export class WacrTrigger implements INodeType {
 		defaults: { name: 'WA.cr Trigger' },
 		inputs: [],
 		outputs: [NodeConnectionTypes.Main],
+		credentials: [
+			{
+				name: 'wacrTriggerApi',
+				required: true,
+				// WA.cr calls n8n, never the reverse, so there is no endpoint to
+				// authenticate against. `wacrTriggerSecret` checks locally that the
+				// pair can be sent as an HTTP header at all.
+				testedBy: 'wacrTriggerSecret',
+			},
+		],
 		webhooks: [
 			{
 				name: 'default',
@@ -110,28 +132,10 @@ export class WacrTrigger implements INodeType {
 		properties: [
 			{
 				displayName:
-					'Copy the Production URL above into a <b>Webhook</b> step in your WA.cr Auto Flow, then add a header there matching the name and secret below. WA.cr requires an <b>HTTPS URL on a public hostname</b> — a self-hosted n8n on localhost or behind NAT cannot receive these events.',
+					'Copy the Production URL above into a <b>Webhook</b> step in your WA.cr Auto Flow, then add a header there matching the <b>Auth Header Name</b> and <b>Secret</b> in the credential above. WA.cr requires an <b>HTTPS URL on a public hostname</b> — a self-hosted n8n on localhost or behind NAT cannot receive these events.',
 				name: 'setupNotice',
 				type: 'notice',
 				default: '',
-			},
-			{
-				displayName: 'Auth Header Name',
-				name: 'authHeaderName',
-				type: 'string',
-				default: 'x-wacr-secret',
-				required: true,
-				description: 'Header the Auto Flow webhook step sends. Any name works, as long as both sides agree.',
-			},
-			{
-				displayName: 'Secret',
-				name: 'secret',
-				type: 'string',
-				typeOptions: { password: true },
-				default: '',
-				required: true,
-				description:
-					'Value that header must carry. Requests without an exact match are rejected with 401.',
 			},
 			{
 				displayName: 'Options',
@@ -196,6 +200,59 @@ export class WacrTrigger implements INodeType {
 		],
 	};
 
+	methods = {
+		credentialTest: {
+			/**
+			 * A local check, and it says so. Nothing here reaches WA.cr — the flow
+			 * posts to n8n, so there is no call this node could make to prove the
+			 * secret is right. What it can prove is that the pair is sendable: a
+			 * header name outside the RFC 7230 token set, or a secret with a
+			 * newline in it, is rejected by the sender rather than by this node,
+			 * which looks from n8n like an event that never arrived.
+			 */
+			async wacrTriggerSecret(
+				this: ICredentialTestFunctions,
+				credential: ICredentialsDecrypted,
+			): Promise<INodeCredentialTestResult> {
+				const data = (credential.data ?? {}) as IDataObject;
+				const headerName = String(data.authHeaderName ?? '').trim();
+				const secret = String(data.secret ?? '');
+
+				if (!headerName) {
+					return {
+						status: 'Error',
+						message: `Auth Header Name is empty. Use ${DEFAULT_AUTH_HEADER} unless the Auto Flow step sends something else.`,
+					};
+				}
+				if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(headerName)) {
+					return {
+						status: 'Error',
+						message:
+							'Auth Header Name is not a valid HTTP header name. Use letters, digits and hyphens.',
+					};
+				}
+				if (!secret) {
+					return {
+						status: 'Error',
+						message: 'Secret is empty, so every request would be rejected.',
+					};
+				}
+				if (secret !== secret.trim() || /[\r\n]/.test(secret)) {
+					return {
+						status: 'Error',
+						message:
+							'Secret has leading, trailing or line-break whitespace, which will not survive the header. Remove it.',
+					};
+				}
+
+				return {
+					status: 'OK',
+					message: `Usable. Add ${headerName} with this secret to the Auto Flow webhook step — WA.cr calls n8n, so nothing can be verified from here until an event arrives.`,
+				};
+			},
+		},
+	};
+
 	/**
 	 * WA.cr has no webhook-subscription API, so there is nothing for n8n to
 	 * register, verify or tear down remotely — the user pastes this node's URL
@@ -223,8 +280,11 @@ export class WacrTrigger implements INodeType {
 	};
 
 	async webhook(this: IWebhookFunctions): Promise<IWebhookResponseData> {
-		const headerName = (this.getNodeParameter('authHeaderName') as string).toLowerCase();
-		const expected = this.getNodeParameter('secret') as string;
+		const credentials = await this.getCredentials('wacrTriggerApi');
+		const headerName = (
+			String(credentials.authHeaderName ?? '').trim() || DEFAULT_AUTH_HEADER
+		).toLowerCase();
+		const expected = String(credentials.secret ?? '');
 		const options = this.getNodeParameter('options', {}) as IDataObject;
 
 		const headers = this.getHeaderData() as Record<string, string | undefined>;

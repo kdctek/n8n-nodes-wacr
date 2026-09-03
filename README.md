@@ -42,6 +42,16 @@ workspace. n8n exchanges them at `/v1/oauth/token` and refreshes the short-lived
 needed. Trim the **Scope** field to the subset your client actually holds — asking for a scope
 it was not granted fails the token request.
 
+### Trigger secret
+
+The **WA.cr Trigger** never calls the API, so it uses neither of the above. It takes a
+**WA.cr Trigger API** credential holding the header name and shared secret that authenticate an
+incoming Auto Flow webhook. Scopes do not apply to it — see
+[WA.cr Trigger](#wacr-trigger).
+
+Its connection test is local. WA.cr calls n8n and never the reverse, so there is nothing to
+authenticate against; the test only confirms the pair can be sent as an HTTP header.
+
 ### Scopes by operation
 
 | Operation | Scope |
@@ -169,8 +179,14 @@ WA.cr has no webhook-subscription API, so setup is manual and takes a minute:
 
 1. Add the **WA.cr Trigger** node and copy its **Production URL**.
 2. In your WA.cr Auto Flow, add a **Webhook** step and paste that URL in.
-3. On the same step add a header — `x-wacr-secret` by default — and set it to the same
-   **Secret** you enter on the node. Requests that do not match are rejected with 401.
+3. In n8n create a **WA.cr Trigger API** credential — a header name, `x-wacr-secret` by
+   default, and a long random secret — and select it on the node.
+4. On the same Auto Flow step add that header, carrying that secret. Requests that do not match
+   are rejected with 401.
+
+The secret lives in the credential rather than on the node, so it is encrypted at rest and does
+not travel inside an exported workflow. One credential can serve as many triggers as share the
+pair.
 
 Three limits are worth knowing before you build on it:
 

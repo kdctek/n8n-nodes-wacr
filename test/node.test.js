@@ -1391,11 +1391,16 @@ test('every input item produces its own request and paired output row', async ()
  * The trigger never makes an outbound request, so it needs a different harness:
  * a fake IWebhookFunctions plus a recording stand-in for the Express response.
  */
-function triggerContext({ params, headers = {}, body = {} }) {
+function triggerContext({ params = {}, credentials, headers = {}, body = {} }) {
 	const sent = {};
 	return {
 		sent,
 		ctx: {
+			async getCredentials(type) {
+				assert.strictEqual(type, 'wacrTriggerApi');
+				if (!credentials) throw new Error('Credentials not set');
+				return credentials;
+			},
 			getNodeParameter(name, fallback) {
 				if (name in params) return params[name];
 				if (fallback !== undefined) return fallback;
@@ -1432,7 +1437,8 @@ const flowEvent = {
 
 test('trigger: a matching secret emits the payload as one item', async () => {
 	const { ctx } = triggerContext({
-		params: { authHeaderName: 'X-WACR-Secret', secret: 's3cret', options: {} },
+		credentials: { authHeaderName: 'X-WACR-Secret', secret: 's3cret' },
+		params: { options: {} },
 		headers: { 'x-wacr-secret': 's3cret' },
 		body: flowEvent,
 	});
@@ -1444,7 +1450,8 @@ test('trigger: a matching secret emits the payload as one item', async () => {
 
 test('trigger: a wrong secret returns 401 and does not run the workflow', async () => {
 	const { ctx, sent } = triggerContext({
-		params: { authHeaderName: 'x-wacr-secret', secret: 's3cret', options: {} },
+		credentials: { authHeaderName: 'x-wacr-secret', secret: 's3cret' },
+		params: { options: {} },
 		headers: { 'x-wacr-secret': 'wrong' },
 		body: flowEvent,
 	});
@@ -1459,7 +1466,8 @@ test('trigger: a wrong secret returns 401 and does not run the workflow', async 
 
 test('trigger: a missing secret header is rejected, not treated as empty-equals-empty', async () => {
 	const { ctx, sent } = triggerContext({
-		params: { authHeaderName: 'x-wacr-secret', secret: 's3cret', options: {} },
+		credentials: { authHeaderName: 'x-wacr-secret', secret: 's3cret' },
+		params: { options: {} },
 		headers: {},
 		body: flowEvent,
 	});
@@ -1472,11 +1480,8 @@ test('trigger: a missing secret header is rejected, not treated as empty-equals-
 
 test('trigger: Ignore Test Events acknowledges a test event without running', async () => {
 	const { ctx, sent } = triggerContext({
-		params: {
-			authHeaderName: 'x-wacr-secret',
-			secret: 's3cret',
-			options: { ignoreTestEvents: true },
-		},
+		credentials: { authHeaderName: 'x-wacr-secret', secret: 's3cret' },
+		params: { options: { ignoreTestEvents: true } },
 		headers: { 'x-wacr-secret': 's3cret' },
 		body: { ...flowEvent, test: true },
 	});
@@ -1488,13 +1493,11 @@ test('trigger: Ignore Test Events acknowledges a test event without running', as
 });
 
 test('trigger: the Automation ID filter drops events from other flows', async () => {
-	const params = {
-		authHeaderName: 'x-wacr-secret',
-		secret: 's3cret',
-		options: { automationId: 'a-1' },
-	};
+	const credentials = { authHeaderName: 'x-wacr-secret', secret: 's3cret' };
+	const params = { options: { automationId: 'a-1' } };
 
 	const other = triggerContext({
+		credentials,
 		params,
 		headers: { 'x-wacr-secret': 's3cret' },
 		body: { ...flowEvent, flow: { ...flowEvent.flow, automationId: 'a-2' } },
@@ -1502,11 +1505,85 @@ test('trigger: the Automation ID filter drops events from other flows', async ()
 	assert.strictEqual((await new WacrTrigger().webhook.call(other.ctx)).workflowData, undefined);
 
 	const match = triggerContext({
+		credentials,
 		params,
 		headers: { 'x-wacr-secret': 's3cret' },
 		body: flowEvent,
 	});
 	assert.ok((await new WacrTrigger().webhook.call(match.ctx)).workflowData);
+});
+
+test('trigger: the secret comes from the credential, not from a node parameter', async () => {
+	const properties = new WacrTrigger().description.properties.map((p) => p.name);
+
+	assert.ok(!properties.includes('secret'), 'the secret must not be a node property');
+	assert.ok(!properties.includes('authHeaderName'), 'the header name must not be a node property');
+	assert.deepStrictEqual(new WacrTrigger().description.credentials, [
+		{ name: 'wacrTriggerApi', required: true, testedBy: 'wacrTriggerSecret' },
+	]);
+});
+
+test('trigger: a blank header name in the credential falls back to the default', async () => {
+	const { ctx } = triggerContext({
+		credentials: { authHeaderName: '  ', secret: 's3cret' },
+		params: { options: {} },
+		headers: { 'x-wacr-secret': 's3cret' },
+		body: flowEvent,
+	});
+
+	const result = await new WacrTrigger().webhook.call(ctx);
+
+	assert.deepStrictEqual(result.workflowData, [[{ json: flowEvent }]]);
+});
+
+test('trigger: a header name is matched case-insensitively and untrimmed', async () => {
+	const { ctx } = triggerContext({
+		credentials: { authHeaderName: ' X-Custom-Auth ', secret: 's3cret' },
+		params: { options: {} },
+		headers: { 'x-custom-auth': 's3cret' },
+		body: flowEvent,
+	});
+
+	assert.ok((await new WacrTrigger().webhook.call(ctx)).workflowData);
+});
+
+/** The credential test is local — it never reaches WA.cr. */
+const credentialTest = (data) =>
+	new WacrTrigger().methods.credentialTest.wacrTriggerSecret.call(
+		{},
+		{ id: '1', name: 'c', type: 'wacrTriggerApi', data },
+	);
+
+test('trigger: the credential test accepts a usable pair', async () => {
+	const result = await credentialTest({ authHeaderName: 'x-wacr-secret', secret: 's3cret' });
+
+	assert.strictEqual(result.status, 'OK');
+	assert.match(result.message, /x-wacr-secret/);
+});
+
+test('trigger: the credential test rejects an empty secret', async () => {
+	const result = await credentialTest({ authHeaderName: 'x-wacr-secret', secret: '' });
+
+	assert.strictEqual(result.status, 'Error');
+	assert.match(result.message, /Secret is empty/);
+});
+
+test('trigger: the credential test rejects an unsendable header name', async () => {
+	const blank = await credentialTest({ authHeaderName: '   ', secret: 's3cret' });
+	assert.strictEqual(blank.status, 'Error');
+	assert.match(blank.message, /x-wacr-secret/); // names the default to fall back on
+
+	const illegal = await credentialTest({ authHeaderName: 'x wacr secret', secret: 's3cret' });
+	assert.strictEqual(illegal.status, 'Error');
+	assert.match(illegal.message, /valid HTTP header name/);
+});
+
+test('trigger: the credential test rejects a secret the header would mangle', async () => {
+	const padded = await credentialTest({ authHeaderName: 'x-wacr-secret', secret: ' s3cret ' });
+	assert.strictEqual(padded.status, 'Error');
+
+	const newline = await credentialTest({ authHeaderName: 'x-wacr-secret', secret: 's3\ncret' });
+	assert.strictEqual(newline.status, 'Error');
 });
 
 /* ── template variables ───────────────────────────────────────────────────── */
@@ -2121,11 +2198,8 @@ test('template pickers: a 403 on channels degrades to an unfiltered list', async
 test('trigger: the Event filter matches the label the flow set in a variable', async () => {
 	const body = { ...flowEvent, variables: { event: 'Order_Paid', orderId: '1234' } };
 	const { ctx } = triggerContext({
-		params: {
-			authHeaderName: 'x-wacr-secret',
-			secret: 's3cret',
-			options: { event: 'appointment_booked, order_paid' },
-		},
+		credentials: { authHeaderName: 'x-wacr-secret', secret: 's3cret' },
+		params: { options: { event: 'appointment_booked, order_paid' } },
 		headers: { 'x-wacr-secret': 's3cret' },
 		body,
 	});
@@ -2137,11 +2211,8 @@ test('trigger: the Event filter matches the label the flow set in a variable', a
 
 test('trigger: the Event filter drops a label it was not asked for', async () => {
 	const { ctx } = triggerContext({
-		params: {
-			authHeaderName: 'x-wacr-secret',
-			secret: 's3cret',
-			options: { event: 'order_paid' },
-		},
+		credentials: { authHeaderName: 'x-wacr-secret', secret: 's3cret' },
+		params: { options: { event: 'order_paid' } },
 		headers: { 'x-wacr-secret': 's3cret' },
 		body: { ...flowEvent, variables: { event: 'order_cancelled' } },
 	});
@@ -2153,11 +2224,8 @@ test('trigger: the Event filter drops a label it was not asked for', async () =>
 
 test('trigger: the Event filter reads whichever variable was named', async () => {
 	const { ctx } = triggerContext({
-		params: {
-			authHeaderName: 'x-wacr-secret',
-			secret: 's3cret',
-			options: { event: 'won', eventVariable: 'stage' },
-		},
+		credentials: { authHeaderName: 'x-wacr-secret', secret: 's3cret' },
+		params: { options: { event: 'won', eventVariable: 'stage' } },
 		headers: { 'x-wacr-secret': 's3cret' },
 		body: { ...flowEvent, variables: { stage: 'won', event: 'ignored' } },
 	});
@@ -2169,7 +2237,8 @@ test('trigger: the Event filter reads whichever variable was named', async () =>
 
 test('trigger: the Node ID filter drops events from other webhook steps', async () => {
 	const { ctx } = triggerContext({
-		params: { authHeaderName: 'x-wacr-secret', secret: 's3cret', options: { nodeId: 'n-9' } },
+		credentials: { authHeaderName: 'x-wacr-secret', secret: 's3cret' },
+		params: { options: { nodeId: 'n-9' } },
 		headers: { 'x-wacr-secret': 's3cret' },
 		body: flowEvent,
 	});
@@ -2181,7 +2250,8 @@ test('trigger: the Node ID filter drops events from other webhook steps', async 
 
 test('trigger: Simplify flattens the event, and its own fields win a clash', async () => {
 	const { ctx } = triggerContext({
-		params: { authHeaderName: 'x-wacr-secret', secret: 's3cret', options: { simplify: true } },
+		credentials: { authHeaderName: 'x-wacr-secret', secret: 's3cret' },
+		params: { options: { simplify: true } },
 		headers: { 'x-wacr-secret': 's3cret' },
 		body: { ...flowEvent, variables: { orderId: '1234', phone: 'not the contact' } },
 	});

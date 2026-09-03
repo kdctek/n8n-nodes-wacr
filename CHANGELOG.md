@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.8] — 2026-09-03
+
+### Changed
+
+- **⚠ Breaking — the WA.cr Trigger's secret moved into a credential.** The **Auth Header Name**
+  and **Secret** node properties are gone; both now live in a new **WA.cr Trigger API**
+  credential. A secret held in a node property is stored inside the workflow, so it travelled
+  with every export and was readable by anyone who could open the canvas. In the credential it
+  is encrypted at rest and stays out of exports. Raised in the n8n community-node review.
+
+  **To upgrade:** open each **WA.cr Trigger**, create a **WA.cr Trigger API** credential with
+  the same header name and secret you had on the node, and select it. Nothing changes in WA.cr
+  — the Auto Flow webhook step keeps the header it already sends. Until the credential is set,
+  the node's executions fail rather than accepting unauthenticated events.
+
+### Added
+
+- A connection test on the new credential. It is local by nature — WA.cr calls n8n, never the
+  reverse — so it checks what it can: that the header name is a legal HTTP header name and that
+  the secret is non-empty and free of whitespace the header would mangle.
+
 ## [0.3.7] — 2026-09-01
 
 ### Changed
